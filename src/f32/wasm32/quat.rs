@@ -359,6 +359,36 @@ impl Quat {
         }
     }
 
+    /// Returns a rotation that will transform [`Vec3::Z`] to point along `look` and
+    /// [`Vec3::Y`] to be coplanar with `look` and `up`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if either `look` or `up` is zero length or if `look` and `up` are colinear when
+    /// `glam_assert` is enabled.
+    #[must_use]
+    pub fn looking_to_lh(look: Vec3, up: Vec3) -> Self {
+        let forward = look.normalize();
+        let right = forward.cross(up).normalize();
+        let up = right.cross(forward);
+        Self::from_mat3(&Mat3::from_cols(right, up, forward))
+    }
+
+    /// Returns a rotation that will transform [`Vec3::NEG_Z`] to point along `look` and
+    /// [`Vec3::Y`] to be coplanar with `look` and `up`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if either `look` or `up` is zero length or if `look` and `up` are colinear when
+    /// `glam_assert` is enabled.
+    #[must_use]
+    pub fn looking_to_rh(look: Vec3, up: Vec3) -> Self {
+        let back = -look.normalize();
+        let right = up.cross(back).normalize();
+        let up = back.cross(right);
+        Self::from_mat3(&Mat3::from_cols(right, up, back))
+    }
+
     /// Returns the rotation axis (normalized) and angle (in radians) of `self`.
     #[inline]
     #[must_use]
