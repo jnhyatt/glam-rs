@@ -1,10 +1,14 @@
 // Generated from mat.rs.tera template. Edit the template, not the generated file.
 
-use crate::{f64::math, swizzles::*, DMat2, DMat4, DQuat, DVec2, DVec3, EulerRot, Mat3};
-#[cfg(not(target_arch = "spirv"))]
+use crate::{
+    euler::{FromEuler, ToEuler},
+    f64::math,
+    swizzles::*,
+    DMat2, DMat4, DQuat, DVec2, DVec3, EulerRot, Mat3,
+};
 use core::fmt;
 use core::iter::{Product, Sum};
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// Creates a 3x3 matrix from three column vectors.
 #[inline(always)]
@@ -153,7 +157,41 @@ impl DMat3 {
     #[inline]
     #[must_use]
     pub fn from_mat4(m: DMat4) -> Self {
-        Self::from_cols(m.x_axis.xyz(), m.y_axis.xyz(), m.z_axis.xyz())
+        Self::from_cols(
+            DVec3::from_vec4(m.x_axis),
+            DVec3::from_vec4(m.y_axis),
+            DVec3::from_vec4(m.z_axis),
+        )
+    }
+
+    /// Creates a 3x3 matrix from the minor of the given 4x4 matrix, discarding the `i`th column
+    /// and `j`th row.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i` or `j` is greater than 3.
+    #[inline]
+    #[must_use]
+    pub fn from_mat4_minor(m: DMat4, i: usize, j: usize) -> Self {
+        match (i, j) {
+            (0, 0) => Self::from_cols(m.y_axis.yzw(), m.z_axis.yzw(), m.w_axis.yzw()),
+            (0, 1) => Self::from_cols(m.y_axis.xzw(), m.z_axis.xzw(), m.w_axis.xzw()),
+            (0, 2) => Self::from_cols(m.y_axis.xyw(), m.z_axis.xyw(), m.w_axis.xyw()),
+            (0, 3) => Self::from_cols(m.y_axis.xyz(), m.z_axis.xyz(), m.w_axis.xyz()),
+            (1, 0) => Self::from_cols(m.x_axis.yzw(), m.z_axis.yzw(), m.w_axis.yzw()),
+            (1, 1) => Self::from_cols(m.x_axis.xzw(), m.z_axis.xzw(), m.w_axis.xzw()),
+            (1, 2) => Self::from_cols(m.x_axis.xyw(), m.z_axis.xyw(), m.w_axis.xyw()),
+            (1, 3) => Self::from_cols(m.x_axis.xyz(), m.z_axis.xyz(), m.w_axis.xyz()),
+            (2, 0) => Self::from_cols(m.x_axis.yzw(), m.y_axis.yzw(), m.w_axis.yzw()),
+            (2, 1) => Self::from_cols(m.x_axis.xzw(), m.y_axis.xzw(), m.w_axis.xzw()),
+            (2, 2) => Self::from_cols(m.x_axis.xyw(), m.y_axis.xyw(), m.w_axis.xyw()),
+            (2, 3) => Self::from_cols(m.x_axis.xyz(), m.y_axis.xyz(), m.w_axis.xyz()),
+            (3, 0) => Self::from_cols(m.x_axis.yzw(), m.y_axis.yzw(), m.z_axis.yzw()),
+            (3, 1) => Self::from_cols(m.x_axis.xzw(), m.y_axis.xzw(), m.z_axis.xzw()),
+            (3, 2) => Self::from_cols(m.x_axis.xyw(), m.y_axis.xyw(), m.z_axis.xyw()),
+            (3, 3) => Self::from_cols(m.x_axis.xyz(), m.y_axis.xyz(), m.z_axis.xyz()),
+            _ => panic!("index out of bounds"),
+        }
     }
 
     /// Creates a 3D rotation matrix from the given quaternion.
@@ -217,8 +255,26 @@ impl DMat3 {
     #[inline]
     #[must_use]
     pub fn from_euler(order: EulerRot, a: f64, b: f64, c: f64) -> Self {
-        let quat = DQuat::from_euler(order, a, b, c);
-        Self::from_quat(quat)
+        Self::from_euler_angles(order, a, b, c)
+    }
+
+    /// Extract Euler angles with the given Euler rotation order.
+    ///
+    /// Note if the input matrix contains scales, shears, or other non-rotation transformations then
+    /// the resulting Euler angles will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any input matrix column is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn to_euler(&self, order: EulerRot) -> (f64, f64, f64) {
+        glam_assert!(
+            self.x_axis.is_normalized()
+                && self.y_axis.is_normalized()
+                && self.z_axis.is_normalized()
+        );
+        self.to_euler_angles(order)
     }
 
     /// Creates a 3D rotation matrix from `angle` (in radians) around the x axis.
@@ -496,6 +552,69 @@ impl DMat3 {
         DMat2::from_cols(self.x_axis.xy(), self.y_axis.xy()) * rhs
     }
 
+    /// Creates a left-handed view matrix using a facing direction and an up direction.
+    ///
+    /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `dir` or `up` are not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_to_lh(dir: DVec3, up: DVec3) -> Self {
+        Self::look_to_rh(-dir, up)
+    }
+
+    /// Creates a right-handed view matrix using a facing direction and an up direction.
+    ///
+    /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `dir` or `up` are not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_to_rh(dir: DVec3, up: DVec3) -> Self {
+        glam_assert!(dir.is_normalized());
+        glam_assert!(up.is_normalized());
+        let f = dir;
+        let s = f.cross(up).normalize();
+        let u = s.cross(f);
+
+        Self::from_cols(
+            DVec3::new(s.x, u.x, -f.x),
+            DVec3::new(s.y, u.y, -f.y),
+            DVec3::new(s.z, u.z, -f.z),
+        )
+    }
+
+    /// Creates a left-handed view matrix using a camera position, a focal point and an up
+    /// direction.
+    ///
+    /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_at_lh(eye: DVec3, center: DVec3, up: DVec3) -> Self {
+        Self::look_to_lh(center.sub(eye).normalize(), up)
+    }
+
+    /// Creates a right-handed view matrix using a camera position, a focal point and an up
+    /// direction.
+    ///
+    /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    pub fn look_at_rh(eye: DVec3, center: DVec3, up: DVec3) -> Self {
+        Self::look_to_rh(center.sub(eye).normalize(), up)
+    }
+
     /// Transforms a 3D vector.
     #[inline]
     #[must_use]
@@ -547,6 +666,18 @@ impl DMat3 {
             self.x_axis.mul(rhs),
             self.y_axis.mul(rhs),
             self.z_axis.mul(rhs),
+        )
+    }
+
+    /// Divides a 3x3 matrix by a scalar.
+    #[inline]
+    #[must_use]
+    pub fn div_scalar(&self, rhs: f64) -> Self {
+        let rhs = DVec3::splat(rhs);
+        Self::from_cols(
+            self.x_axis.div(rhs),
+            self.y_axis.div(rhs),
+            self.z_axis.div(rhs),
         )
     }
 
@@ -675,6 +806,29 @@ impl MulAssign<f64> for DMat3 {
     }
 }
 
+impl Div<DMat3> for f64 {
+    type Output = DMat3;
+    #[inline]
+    fn div(self, rhs: DMat3) -> Self::Output {
+        rhs.div_scalar(self)
+    }
+}
+
+impl Div<f64> for DMat3 {
+    type Output = Self;
+    #[inline]
+    fn div(self, rhs: f64) -> Self::Output {
+        self.div_scalar(rhs)
+    }
+}
+
+impl DivAssign<f64> for DMat3 {
+    #[inline]
+    fn div_assign(&mut self, rhs: f64) {
+        *self = self.div_scalar(rhs);
+    }
+}
+
 impl Sum<Self> for DMat3 {
     fn sum<I>(iter: I) -> Self
     where
@@ -734,7 +888,6 @@ impl AsMut<[f64; 9]> for DMat3 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for DMat3 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct(stringify!(DMat3))
@@ -745,9 +898,16 @@ impl fmt::Debug for DMat3 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for DMat3 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}, {}, {}]", self.x_axis, self.y_axis, self.z_axis)
+        if let Some(p) = f.precision() {
+            write!(
+                f,
+                "[{:.*}, {:.*}, {:.*}]",
+                p, self.x_axis, p, self.y_axis, p, self.z_axis
+            )
+        } else {
+            write!(f, "[{}, {}, {}]", self.x_axis, self.y_axis, self.z_axis)
+        }
     }
 }

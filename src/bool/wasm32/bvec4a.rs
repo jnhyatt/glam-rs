@@ -1,10 +1,16 @@
 // Generated from vec_mask.rs.tera template. Edit the template, not the generated file.
 
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::ops::*;
 
 use core::arch::wasm32::*;
+
+/// Creates a 4-dimensional `bool` vector mask.
+#[inline(always)]
+#[must_use]
+pub const fn bvec4a(x: bool, y: bool, z: bool, w: bool) -> BVec4A {
+    BVec4A::new(x, y, z, w)
+}
 
 /// A 4-dimensional SIMD vector mask.
 ///
@@ -95,7 +101,7 @@ impl BVec4A {
         use crate::Vec4;
         let mut v = Vec4(self.0);
         v[index] = f32::from_bits(MASK[value as usize]);
-        *self = Self(v.0);
+        self.0 = v.0;
     }
 
     #[inline]
@@ -206,7 +212,6 @@ impl From<BVec4A> for v128 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for BVec4A {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_u32_array();
@@ -222,7 +227,6 @@ impl fmt::Debug for BVec4A {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for BVec4A {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_bool_array();

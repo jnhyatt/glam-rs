@@ -11,11 +11,6 @@ mod libm_math {
     }
 
     #[inline(always)]
-    pub(crate) fn asin(f: f64) -> f64 {
-        libm::asin(f)
-    }
-
-    #[inline(always)]
     pub(crate) fn atan2(f: f64, other: f64) -> f64 {
         libm::atan2(f, other)
     }
@@ -110,7 +105,7 @@ mod libm_math {
     }
 }
 
-#[cfg(not(feature = "libm"))]
+#[cfg(all(not(feature = "libm"), feature = "std"))]
 mod std_math {
     #[inline(always)]
     pub(crate) fn abs(f: f64) -> f64 {
@@ -120,11 +115,6 @@ mod std_math {
     #[inline(always)]
     pub(crate) fn acos_approx(f: f64) -> f64 {
         f64::acos(f64::clamp(f, -1.0, 1.0))
-    }
-
-    #[inline(always)]
-    pub(crate) fn asin(f: f64) -> f64 {
-        f64::asin(f)
     }
 
     #[inline(always)]
@@ -208,8 +198,88 @@ mod std_math {
     }
 }
 
+// Used to reduce the number of compilation errors, in the event that no other
+// math backend is specified.
+#[cfg(all(not(feature = "libm"), not(feature = "std")))]
+mod no_backend_math {
+    pub(crate) fn abs(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn acos_approx(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn atan2(_: f64, _: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn sin(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn sin_cos(_: f64) -> (f64, f64) {
+        unimplemented!()
+    }
+
+    pub(crate) fn tan(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn sqrt(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn copysign(_: f64, _: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn signum(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn round(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn trunc(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn ceil(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn floor(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn exp(_: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn powf(_: f64, _: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub(crate) fn mul_add(_: f64, _: f64, _: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub fn div_euclid(_: f64, _: f64) -> f64 {
+        unimplemented!()
+    }
+
+    pub fn rem_euclid(_: f64, _: f64) -> f64 {
+        unimplemented!()
+    }
+}
+
 #[cfg(feature = "libm")]
 pub(crate) use libm_math::*;
 
-#[cfg(not(feature = "libm"))]
+#[cfg(all(not(feature = "libm"), feature = "std"))]
 pub(crate) use std_math::*;
+
+#[cfg(all(not(feature = "libm"), not(feature = "std")))]
+pub(crate) use no_backend_math::*;

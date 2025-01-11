@@ -1,12 +1,11 @@
 // Generated from quat.rs.tera template. Edit the template, not the generated file.
 
 use crate::{
-    euler::{EulerFromQuaternion, EulerRot, EulerToQuaternion},
+    euler::{EulerRot, FromEuler, ToEuler},
     f64::math,
     DMat3, DMat4, DVec2, DVec3, DVec4, Quat,
 };
 
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::iter::{Product, Sum};
 use core::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
@@ -179,14 +178,22 @@ impl DQuat {
     #[inline]
     #[must_use]
     pub fn from_euler(euler: EulerRot, a: f64, b: f64, c: f64) -> Self {
-        euler.new_quat(a, b, c)
+        Self::from_euler_angles(euler, a, b, c)
     }
 
     /// From the columns of a 3x3 rotation matrix.
+    ///
+    /// Note if the input axes contain scales, shears, or other non-rotation transformations then
+    /// the output of this function is ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any axis is not normalized when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub(crate) fn from_rotation_axes(x_axis: DVec3, y_axis: DVec3, z_axis: DVec3) -> Self {
-        // Based on https://github.com/microsoft/DirectXMath `XM$quaternionRotationMatrix`
+        glam_assert!(x_axis.is_normalized() && y_axis.is_normalized() && z_axis.is_normalized());
+        // Based on https://github.com/microsoft/DirectXMath `XMQuaternionRotationMatrix`
         let (m00, m01, m02) = x_axis.into();
         let (m10, m11, m12) = y_axis.into();
         let (m20, m21, m22) = z_axis.into();
@@ -244,13 +251,28 @@ impl DQuat {
     }
 
     /// Creates a quaternion from a 3x3 rotation matrix.
+    ///
+    /// Note if the input matrix contain scales, shears, or other non-rotation transformations then
+    /// the resulting quaternion will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any input matrix column is not normalized when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn from_mat3(mat: &DMat3) -> Self {
         Self::from_rotation_axes(mat.x_axis, mat.y_axis, mat.z_axis)
     }
 
-    /// Creates a quaternion from a 3x3 rotation matrix inside a homogeneous 4x4 matrix.
+    /// Creates a quaternion from the upper 3x3 rotation matrix inside a homogeneous 4x4 matrix.
+    ///
+    /// Note if the upper 3x3 matrix contain scales, shears, or other non-rotation transformations
+    /// then the resulting quaternion will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any column of the upper 3x3 rotation matrix is not normalized when
+    /// `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn from_mat4(mat: &DMat4) -> Self {
@@ -279,7 +301,7 @@ impl DQuat {
         glam_assert!(from.is_normalized());
         glam_assert!(to.is_normalized());
 
-        const ONE_MINUS_EPS: f64 = 1.0 - 2.0 * core::f64::EPSILON;
+        const ONE_MINUS_EPS: f64 = 1.0 - 2.0 * f64::EPSILON;
         let dot = from.dot(to);
         if dot > ONE_MINUS_EPS {
             // 0° singularity: from ≈ to
@@ -335,7 +357,7 @@ impl DQuat {
         glam_assert!(from.is_normalized());
         glam_assert!(to.is_normalized());
 
-        const ONE_MINUS_EPSILON: f64 = 1.0 - 2.0 * core::f64::EPSILON;
+        const ONE_MINUS_EPSILON: f64 = 1.0 - 2.0 * f64::EPSILON;
         let dot = from.dot(to);
         if dot > ONE_MINUS_EPSILON {
             // 0° singularity: from ≈ to
@@ -354,6 +376,69 @@ impl DQuat {
             let len_rcp = 1.0 / math::sqrt(z * z + w * w);
             Self::from_xyzw(0.0, 0.0, z * len_rcp, w * len_rcp)
         }
+    }
+
+    /// Creates a quaterion rotation from a facing direction and an up direction.
+    ///
+    /// For a left-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_to_lh(dir: DVec3, up: DVec3) -> Self {
+        Self::look_to_rh(-dir, up)
+    }
+
+    /// Creates a quaterion rotation from facing direction and an up direction.
+    ///
+    /// For a right-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `dir` and `up` are not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_to_rh(dir: DVec3, up: DVec3) -> Self {
+        glam_assert!(dir.is_normalized());
+        glam_assert!(up.is_normalized());
+        let f = dir;
+        let s = f.cross(up).normalize();
+        let u = s.cross(f);
+
+        Self::from_rotation_axes(
+            DVec3::new(s.x, u.x, -f.x),
+            DVec3::new(s.y, u.y, -f.y),
+            DVec3::new(s.z, u.z, -f.z),
+        )
+    }
+
+    /// Creates a left-handed view matrix using a camera position, a focal point, and an up
+    /// direction.
+    ///
+    /// For a left-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_at_lh(eye: DVec3, center: DVec3, up: DVec3) -> Self {
+        Self::look_to_lh(center.sub(eye).normalize(), up)
+    }
+
+    /// Creates a right-handed view matrix using a camera position, an up direction, and a focal
+    /// point.
+    ///
+    /// For a right-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    pub fn look_at_rh(eye: DVec3, center: DVec3, up: DVec3) -> Self {
+        Self::look_to_rh(center.sub(eye).normalize(), up)
     }
 
     /// Returns the rotation axis (normalized) and angle (in radians) of `self`.
@@ -383,8 +468,8 @@ impl DQuat {
     /// Returns the rotation angles for the given euler rotation sequence.
     #[inline]
     #[must_use]
-    pub fn to_euler(self, euler: EulerRot) -> (f64, f64, f64) {
-        euler.convert_quat(self)
+    pub fn to_euler(self, order: EulerRot) -> (f64, f64, f64) {
+        self.to_euler_angles(order)
     }
 
     /// `[x, y, z, w]`
@@ -487,6 +572,7 @@ impl DQuat {
         DVec4::from(self).is_finite()
     }
 
+    /// Returns `true` if any elements are `NAN`.
     #[inline]
     #[must_use]
     pub fn is_nan(self) -> bool {
@@ -539,6 +625,29 @@ impl DQuat {
         math::acos_approx(math::abs(self.dot(rhs))) * 2.0
     }
 
+    /// Rotates towards `rhs` up to `max_angle` (in radians).
+    ///
+    /// When `max_angle` is `0.0`, the result will be equal to `self`. When `max_angle` is equal to
+    /// `self.angle_between(rhs)`, the result will be equal to `rhs`. If `max_angle` is negative,
+    /// rotates towards the exact opposite of `rhs`. Will not go past the target.
+    ///
+    /// Both quaternions must be normalized.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `self` or `rhs` are not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn rotate_towards(&self, rhs: Self, max_angle: f64) -> Self {
+        glam_assert!(self.is_normalized() && rhs.is_normalized());
+        let angle = self.angle_between(rhs);
+        if angle <= 1e-4 {
+            return rhs;
+        }
+        let s = (max_angle / angle).clamp(-1.0, 1.0);
+        self.slerp(rhs, s)
+    }
+
     /// Returns true if the absolute difference of all elements between `self` and `rhs`
     /// is less than or equal to `max_abs_diff`.
     ///
@@ -552,6 +661,12 @@ impl DQuat {
     #[must_use]
     pub fn abs_diff_eq(self, rhs: Self, max_abs_diff: f64) -> bool {
         DVec4::from(self).abs_diff_eq(DVec4::from(rhs), max_abs_diff)
+    }
+
+    #[inline(always)]
+    #[must_use]
+    fn lerp_impl(self, end: Self, s: f64) -> Self {
+        (self * (1.0 - s) + end * s).normalize()
     }
 
     /// Performs a linear interpolation between `self` and `rhs` based on
@@ -570,11 +685,9 @@ impl DQuat {
         glam_assert!(self.is_normalized());
         glam_assert!(end.is_normalized());
 
-        let start = self;
-        let dot = start.dot(end);
+        let dot = self.dot(end);
         let bias = if dot >= 0.0 { 1.0 } else { -1.0 };
-        let interpolated = start.add(end.mul(bias).sub(start).mul(s));
-        interpolated.normalize()
+        self.lerp_impl(end * bias, s)
     }
 
     /// Performs a spherical linear interpolation between `self` and `end`
@@ -593,8 +706,6 @@ impl DQuat {
         glam_assert!(self.is_normalized());
         glam_assert!(end.is_normalized());
 
-        const DOT_THRESHOLD: f64 = 0.9995;
-
         // Note that a rotation can be represented by two quaternions: `q` and
         // `-q`. The slerp path between `q` and `end` will be different from the
         // path between `-q` and `end`. One path will take the long way around and
@@ -607,17 +718,17 @@ impl DQuat {
             dot = -dot;
         }
 
+        const DOT_THRESHOLD: f64 = 1.0 - f64::EPSILON;
         if dot > DOT_THRESHOLD {
-            // assumes lerp returns a normalized quaternion
-            self.lerp(end, s)
+            // if above threshold perform linear interpolation to avoid divide by zero
+            self.lerp_impl(end, s)
         } else {
             let theta = math::acos_approx(dot);
 
             let scale1 = math::sin(theta * (1.0 - s));
             let scale2 = math::sin(theta * s);
             let theta_sin = math::sin(theta);
-
-            self.mul(scale1).add(end.mul(scale2)).mul(1.0 / theta_sin)
+            ((self * scale1) + (end * scale2)) * (1.0 / theta_sin)
         }
     }
 
@@ -650,9 +761,6 @@ impl DQuat {
     #[inline]
     #[must_use]
     pub fn mul_quat(self, rhs: Self) -> Self {
-        glam_assert!(self.is_normalized());
-        glam_assert!(rhs.is_normalized());
-
         let (x0, y0, z0, w0) = self.into();
         let (x1, y1, z1, w1) = rhs.into();
         Self::from_xyzw(
@@ -664,6 +772,14 @@ impl DQuat {
     }
 
     /// Creates a quaternion from a 3x3 rotation matrix inside a 3D affine transform.
+    ///
+    /// Note if the input affine matrix contain scales, shears, or other non-rotation
+    /// transformations then the resulting quaternion will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any input affine matrix column is not normalized when `glam_assert` is
+    /// enabled.
     #[inline]
     #[must_use]
     pub fn from_affine3(a: &crate::DAffine3) -> Self {
@@ -680,16 +796,8 @@ impl DQuat {
     pub fn as_quat(self) -> Quat {
         Quat::from_xyzw(self.x as f32, self.y as f32, self.z as f32, self.w as f32)
     }
-
-    #[inline]
-    #[must_use]
-    #[deprecated(since = "0.24.2", note = "Use as_quat() instead")]
-    pub fn as_f32(self) -> Quat {
-        self.as_quat()
-    }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for DQuat {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple(stringify!(DQuat))
@@ -701,10 +809,17 @@ impl fmt::Debug for DQuat {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for DQuat {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "[{}, {}, {}, {}]", self.x, self.y, self.z, self.w)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(p) = f.precision() {
+            write!(
+                f,
+                "[{:.*}, {:.*}, {:.*}, {:.*}]",
+                p, self.x, p, self.y, p, self.z, p, self.w
+            )
+        } else {
+            write!(f, "[{}, {}, {}, {}]", self.x, self.y, self.z, self.w)
+        }
     }
 }
 

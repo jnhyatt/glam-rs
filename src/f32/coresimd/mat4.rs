@@ -1,12 +1,15 @@
 // Generated from mat.rs.tera template. Edit the template, not the generated file.
 
 use crate::{
-    coresimd::*, f32::math, swizzles::*, DMat4, EulerRot, Mat3, Mat3A, Quat, Vec3, Vec3A, Vec4,
+    coresimd::*,
+    euler::{FromEuler, ToEuler},
+    f32::math,
+    swizzles::*,
+    DMat4, EulerRot, Mat3, Mat3A, Quat, Vec3, Vec3A, Vec4,
 };
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::iter::{Product, Sum};
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use core::simd::*;
 
@@ -382,8 +385,27 @@ impl Mat4 {
     #[inline]
     #[must_use]
     pub fn from_euler(order: EulerRot, a: f32, b: f32, c: f32) -> Self {
-        let quat = Quat::from_euler(order, a, b, c);
-        Self::from_quat(quat)
+        Self::from_euler_angles(order, a, b, c)
+    }
+
+    /// Extract Euler angles with the given Euler rotation order.
+    ///
+    /// Note if the upper 3x3 matrix contain scales, shears, or other non-rotation transformations
+    /// then the resulting Euler angles will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any column of the upper 3x3 rotation matrix is not normalized when
+    /// `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn to_euler(&self, order: EulerRot) -> (f32, f32, f32) {
+        glam_assert!(
+            self.x_axis.xyz().is_normalized()
+                && self.y_axis.xyz().is_normalized()
+                && self.z_axis.xyz().is_normalized()
+        );
+        self.to_euler_angles(order)
     }
 
     /// Creates an affine transformation matrix containing a 3D rotation around the x axis of
@@ -770,24 +792,34 @@ impl Mat4 {
         }
     }
 
-    /// Creates a left-handed view matrix using a camera position, an up direction, and a facing
-    /// direction.
+    /// Creates a left-handed view matrix using a camera position, a facing direction and an up
+    /// direction
     ///
     /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `dir` or `up` are not normalized when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn look_to_lh(eye: Vec3, dir: Vec3, up: Vec3) -> Self {
         Self::look_to_rh(eye, -dir, up)
     }
 
-    /// Creates a right-handed view matrix using a camera position, an up direction, and a facing
+    /// Creates a right-handed view matrix using a camera position, a facing direction, and an up
     /// direction.
     ///
     /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `dir` or `up` are not normalized when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn look_to_rh(eye: Vec3, dir: Vec3, up: Vec3) -> Self {
-        let f = dir.normalize();
+        glam_assert!(dir.is_normalized());
+        glam_assert!(up.is_normalized());
+        let f = dir;
         let s = f.cross(up).normalize();
         let u = s.cross(f);
 
@@ -799,8 +831,9 @@ impl Mat4 {
         )
     }
 
-    /// Creates a left-handed view matrix using a camera position, an up direction, and a focal
-    /// point.
+    /// Creates a left-handed view matrix using a camera position, a focal points and an up
+    /// direction.
+    ///
     /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
     ///
     /// # Panics
@@ -809,12 +842,12 @@ impl Mat4 {
     #[inline]
     #[must_use]
     pub fn look_at_lh(eye: Vec3, center: Vec3, up: Vec3) -> Self {
-        glam_assert!(up.is_normalized());
-        Self::look_to_lh(eye, center.sub(eye), up)
+        Self::look_to_lh(eye, center.sub(eye).normalize(), up)
     }
 
-    /// Creates a right-handed view matrix using a camera position, an up direction, and a focal
-    /// point.
+    /// Creates a right-handed view matrix using a camera position, a focal point, and an up
+    /// direction.
+    ///
     /// For a view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
     ///
     /// # Panics
@@ -822,11 +855,13 @@ impl Mat4 {
     /// Will panic if `up` is not normalized when `glam_assert` is enabled.
     #[inline]
     pub fn look_at_rh(eye: Vec3, center: Vec3, up: Vec3) -> Self {
-        glam_assert!(up.is_normalized());
-        Self::look_to_rh(eye, center.sub(eye), up)
+        Self::look_to_rh(eye, center.sub(eye).normalize(), up)
     }
 
-    /// Creates a right-handed perspective projection matrix with [-1,1] depth range.
+    /// Creates a right-handed perspective projection matrix with `[-1,1]` depth range.
+    ///
+    /// Useful to map the standard right-handed coordinate system into what OpenGL expects.
+    ///
     /// This is the same as the OpenGL `gluPerspective` function.
     /// See <https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml>
     #[inline]
@@ -852,6 +887,8 @@ impl Mat4 {
 
     /// Creates a left-handed perspective projection matrix with `[0,1]` depth range.
     ///
+    /// Useful to map the standard left-handed coordinate system into what WebGPU/Metal/Direct3D expect.
+    ///
     /// # Panics
     ///
     /// Will panic if `z_near` or `z_far` are less than or equal to zero when `glam_assert` is
@@ -873,6 +910,8 @@ impl Mat4 {
     }
 
     /// Creates a right-handed perspective projection matrix with `[0,1]` depth range.
+    ///
+    /// Useful to map the standard right-handed coordinate system into what WebGPU/Metal/Direct3D expect.
     ///
     /// # Panics
     ///
@@ -896,9 +935,13 @@ impl Mat4 {
 
     /// Creates an infinite left-handed perspective projection matrix with `[0,1]` depth range.
     ///
+    /// Like `perspective_lh`, but with an infinite value for `z_far`.
+    /// The result is that points near `z_near` are mapped to depth `0`, and as they move towards infinity the depth approaches `1`.
+    ///
     /// # Panics
     ///
-    /// Will panic if `z_near` is less than or equal to zero when `glam_assert` is enabled.
+    /// Will panic if `z_near` or `z_far` are less than or equal to zero when `glam_assert` is
+    /// enabled.
     #[inline]
     #[must_use]
     pub fn perspective_infinite_lh(fov_y_radians: f32, aspect_ratio: f32, z_near: f32) -> Self {
@@ -914,7 +957,9 @@ impl Mat4 {
         )
     }
 
-    /// Creates an infinite left-handed perspective projection matrix with `[0,1]` depth range.
+    /// Creates an infinite reverse left-handed perspective projection matrix with `[0,1]` depth range.
+    ///
+    /// Similar to `perspective_infinite_lh`, but maps `Z = z_near` to a depth of `1` and `Z = infinity` to a depth of `0`.
     ///
     /// # Panics
     ///
@@ -938,8 +983,15 @@ impl Mat4 {
         )
     }
 
-    /// Creates an infinite right-handed perspective projection matrix with
-    /// `[0,1]` depth range.
+    /// Creates an infinite right-handed perspective projection matrix with `[0,1]` depth range.
+    ///
+    /// Like `perspective_rh`, but with an infinite value for `z_far`.
+    /// The result is that points near `z_near` are mapped to depth `0`, and as they move towards infinity the depth approaches `1`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `z_near` or `z_far` are less than or equal to zero when `glam_assert` is
+    /// enabled.
     #[inline]
     #[must_use]
     pub fn perspective_infinite_rh(fov_y_radians: f32, aspect_ratio: f32, z_near: f32) -> Self {
@@ -953,8 +1005,13 @@ impl Mat4 {
         )
     }
 
-    /// Creates an infinite reverse right-handed perspective projection matrix
-    /// with `[0,1]` depth range.
+    /// Creates an infinite reverse right-handed perspective projection matrix with `[0,1]` depth range.
+    ///
+    /// Similar to `perspective_infinite_rh`, but maps `Z = z_near` to a depth of `1` and `Z = infinity` to a depth of `0`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `z_near` is less than or equal to zero when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn perspective_infinite_reverse_rh(
@@ -976,6 +1033,8 @@ impl Mat4 {
     /// range.  This is the same as the OpenGL `glOrtho` function in OpenGL.
     /// See
     /// <https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml>
+    ///
+    /// Useful to map a right-handed coordinate system to the normalized device coordinates that OpenGL expects.
     #[inline]
     #[must_use]
     pub fn orthographic_rh_gl(
@@ -1002,6 +1061,8 @@ impl Mat4 {
     }
 
     /// Creates a left-handed orthographic projection matrix with `[0,1]` depth range.
+    ///
+    /// Useful to map a left-handed coordinate system to the normalized device coordinates that WebGPU/Direct3D/Metal expect.
     #[inline]
     #[must_use]
     pub fn orthographic_lh(
@@ -1029,6 +1090,8 @@ impl Mat4 {
     }
 
     /// Creates a right-handed orthographic projection matrix with `[0,1]` depth range.
+    ///
+    /// Useful to map a right-handed coordinate system to the normalized device coordinates that WebGPU/Direct3D/Metal expect.
     #[inline]
     #[must_use]
     pub fn orthographic_rh(
@@ -1068,7 +1131,7 @@ impl Mat4 {
         res = self.y_axis.mul(rhs.y).add(res);
         res = self.z_axis.mul(rhs.z).add(res);
         res = self.w_axis.add(res);
-        res = res.mul(res.wwww().recip());
+        res = res.div(res.w);
         res.xyz()
     }
 
@@ -1115,6 +1178,23 @@ impl Mat4 {
         res.xyz()
     }
 
+    /// Transforms the given [`Vec3A`] as a 3D point, applying perspective correction.
+    ///
+    /// This is the equivalent of multiplying the [`Vec3A`] as a 4D vector where `w` is `1.0`.
+    /// The perspective divide is performed meaning the resulting 3D vector is divided by `w`.
+    ///
+    /// This method assumes that `self` contains a projective transform.
+    #[inline]
+    #[must_use]
+    pub fn project_point3a(&self, rhs: Vec3A) -> Vec3A {
+        let mut res = self.x_axis.mul(rhs.xxxx());
+        res = self.y_axis.mul(rhs.yyyy()).add(res);
+        res = self.z_axis.mul(rhs.zzzz()).add(res);
+        res = self.w_axis.add(res);
+        res = res.div(res.wwww());
+        Vec3A::from_vec4(res)
+    }
+
     /// Transforms the given [`Vec3A`] as 3D point.
     ///
     /// This is the equivalent of multiplying the [`Vec3A`] as a 4D vector where `w` is `1.0`.
@@ -1126,7 +1206,7 @@ impl Mat4 {
         res = self.y_axis.mul(rhs.yyyy()).add(res);
         res = self.z_axis.mul(rhs.zzzz()).add(res);
         res = self.w_axis.add(res);
-        res.into()
+        Vec3A::from_vec4(res)
     }
 
     /// Transforms the give [`Vec3A`] as 3D vector.
@@ -1139,7 +1219,7 @@ impl Mat4 {
         let mut res = self.x_axis.mul(rhs.xxxx());
         res = self.y_axis.mul(rhs.yyyy()).add(res);
         res = self.z_axis.mul(rhs.zzzz()).add(res);
-        res.into()
+        Vec3A::from_vec4(res)
     }
 
     /// Transforms a 4D vector.
@@ -1198,6 +1278,19 @@ impl Mat4 {
             self.y_axis.mul(rhs),
             self.z_axis.mul(rhs),
             self.w_axis.mul(rhs),
+        )
+    }
+
+    /// Divides a 4x4 matrix by a scalar.
+    #[inline]
+    #[must_use]
+    pub fn div_scalar(&self, rhs: f32) -> Self {
+        let rhs = Vec4::splat(rhs);
+        Self::from_cols(
+            self.x_axis.div(rhs),
+            self.y_axis.div(rhs),
+            self.z_axis.div(rhs),
+            self.w_axis.div(rhs),
         )
     }
 
@@ -1338,6 +1431,29 @@ impl MulAssign<f32> for Mat4 {
     }
 }
 
+impl Div<Mat4> for f32 {
+    type Output = Mat4;
+    #[inline]
+    fn div(self, rhs: Mat4) -> Self::Output {
+        rhs.div_scalar(self)
+    }
+}
+
+impl Div<f32> for Mat4 {
+    type Output = Self;
+    #[inline]
+    fn div(self, rhs: f32) -> Self::Output {
+        self.div_scalar(rhs)
+    }
+}
+
+impl DivAssign<f32> for Mat4 {
+    #[inline]
+    fn div_assign(&mut self, rhs: f32) {
+        *self = self.div_scalar(rhs);
+    }
+}
+
 impl Sum<Self> for Mat4 {
     fn sum<I>(iter: I) -> Self
     where
@@ -1400,7 +1516,6 @@ impl AsMut<[f32; 16]> for Mat4 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for Mat4 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct(stringify!(Mat4))
@@ -1412,13 +1527,20 @@ impl fmt::Debug for Mat4 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for Mat4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[{}, {}, {}, {}]",
-            self.x_axis, self.y_axis, self.z_axis, self.w_axis
-        )
+        if let Some(p) = f.precision() {
+            write!(
+                f,
+                "[{:.*}, {:.*}, {:.*}, {:.*}]",
+                p, self.x_axis, p, self.y_axis, p, self.z_axis, p, self.w_axis
+            )
+        } else {
+            write!(
+                f,
+                "[{}, {}, {}, {}]",
+                self.x_axis, self.y_axis, self.z_axis, self.w_axis
+            )
+        }
     }
 }

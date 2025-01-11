@@ -8,6 +8,7 @@ enum Target {
     Scalar,
     Sse2,
     Wasm32,
+    Neon,
     CoreSimd,
 }
 
@@ -55,6 +56,30 @@ impl ContextBuilder {
 
     pub fn new_dvec4_swizzle_impl() -> Self {
         Self::new_tvecn_swizzle_impl(4, "D")
+    }
+
+    pub fn new_i8vec2_swizzle_impl() -> Self {
+        Self::new_tvecn_swizzle_impl(2, "I8")
+    }
+
+    pub fn new_i8vec3_swizzle_impl() -> Self {
+        Self::new_tvecn_swizzle_impl(3, "I8")
+    }
+
+    pub fn new_i8vec4_swizzle_impl() -> Self {
+        Self::new_tvecn_swizzle_impl(4, "I8")
+    }
+
+    pub fn new_u8vec2_swizzle_impl() -> Self {
+        Self::new_tvecn_swizzle_impl(2, "U8")
+    }
+
+    pub fn new_u8vec3_swizzle_impl() -> Self {
+        Self::new_tvecn_swizzle_impl(3, "U8")
+    }
+
+    pub fn new_u8vec4_swizzle_impl() -> Self {
+        Self::new_tvecn_swizzle_impl(4, "U8")
     }
 
     pub fn new_i16vec2_swizzle_impl() -> Self {
@@ -224,6 +249,30 @@ impl ContextBuilder {
         Self::new_vecn(4).with_scalar_t("f64")
     }
 
+    pub fn new_i8vec2() -> Self {
+        Self::new_vecn(2).with_scalar_t("i8")
+    }
+
+    pub fn new_i8vec3() -> Self {
+        Self::new_vecn(3).with_scalar_t("i8")
+    }
+
+    pub fn new_i8vec4() -> Self {
+        Self::new_vecn(4).with_scalar_t("i8")
+    }
+
+    pub fn new_u8vec2() -> Self {
+        Self::new_vecn(2).with_scalar_t("u8")
+    }
+
+    pub fn new_u8vec3() -> Self {
+        Self::new_vecn(3).with_scalar_t("u8")
+    }
+
+    pub fn new_u8vec4() -> Self {
+        Self::new_vecn(4).with_scalar_t("u8")
+    }
+
     pub fn new_i16vec2() -> Self {
         Self::new_vecn(2).with_scalar_t("i16")
     }
@@ -357,12 +406,17 @@ impl ContextBuilder {
         self.0.insert("is_sse2", &(target == Target::Sse2));
         self.0.insert("is_coresimd", &(target == Target::CoreSimd));
         self.0.insert("is_wasm32", &(target == Target::Wasm32));
+        self.0.insert("is_neon", &(target == Target::Neon));
         self.0.insert("is_scalar", &(target == Target::Scalar));
         self
     }
 
     pub fn target_sse2(self) -> Self {
         self.with_target(Target::Sse2)
+    }
+
+    pub fn target_neon(self) -> Self {
+        self.with_target(Target::Neon)
     }
 
     pub fn target_wasm32(self) -> Self {
@@ -423,6 +477,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
             ContextBuilder::new_vec3a_swizzle_impl().build(),
         ),
         (
+            "src/swizzles/neon/vec3a_impl.rs",
+            ContextBuilder::new_vec3a_swizzle_impl().build(),
+        ),
+        (
             "src/swizzles/sse2/vec3a_impl.rs",
             ContextBuilder::new_vec3a_swizzle_impl()
                 .target_sse2()
@@ -442,6 +500,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
         ),
         (
             "src/swizzles/scalar/vec4_impl.rs",
+            ContextBuilder::new_vec4_swizzle_impl().build(),
+        ),
+        (
+            "src/swizzles/neon/vec4_impl.rs",
             ContextBuilder::new_vec4_swizzle_impl().build(),
         ),
         (
@@ -473,6 +535,30 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
         (
             "src/swizzles/dvec4_impl.rs",
             ContextBuilder::new_dvec4_swizzle_impl().build(),
+        ),
+        (
+            "src/swizzles/i8vec2_impl.rs",
+            ContextBuilder::new_i8vec2_swizzle_impl().build(),
+        ),
+        (
+            "src/swizzles/i8vec3_impl.rs",
+            ContextBuilder::new_i8vec3_swizzle_impl().build(),
+        ),
+        (
+            "src/swizzles/i8vec4_impl.rs",
+            ContextBuilder::new_i8vec4_swizzle_impl().build(),
+        ),
+        (
+            "src/swizzles/u8vec2_impl.rs",
+            ContextBuilder::new_u8vec2_swizzle_impl().build(),
+        ),
+        (
+            "src/swizzles/u8vec3_impl.rs",
+            ContextBuilder::new_u8vec3_swizzle_impl().build(),
+        ),
+        (
+            "src/swizzles/u8vec4_impl.rs",
+            ContextBuilder::new_u8vec4_swizzle_impl().build(),
         ),
         (
             "src/swizzles/i16vec2_impl.rs",
@@ -575,6 +661,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
             ContextBuilder::new_bvec3a().target_wasm32().build(),
         ),
         (
+            "src/bool/neon/bvec3a.rs",
+            ContextBuilder::new_bvec3a().target_neon().build(),
+        ),
+        (
             "src/bool/coresimd/bvec3a.rs",
             ContextBuilder::new_bvec3a().target_coresimd().build(),
         ),
@@ -591,6 +681,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
             ContextBuilder::new_bvec4a().target_wasm32().build(),
         ),
         (
+            "src/bool/neon/bvec4a.rs",
+            ContextBuilder::new_bvec4a().target_neon().build(),
+        ),
+        (
             "src/bool/coresimd/bvec4a.rs",
             ContextBuilder::new_bvec4a().target_coresimd().build(),
         ),
@@ -599,6 +693,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
         (
             "src/f32/scalar/vec3a.rs",
             ContextBuilder::new_vec3a().build(),
+        ),
+        (
+            "src/f32/neon/vec3a.rs",
+            ContextBuilder::new_vec3a().target_neon().build(),
         ),
         (
             "src/f32/sse2/vec3a.rs",
@@ -614,6 +712,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
         ),
         ("src/f32/scalar/vec4.rs", ContextBuilder::new_vec4().build()),
         (
+            "src/f32/neon/vec4.rs",
+            ContextBuilder::new_vec4().target_neon().build(),
+        ),
+        (
             "src/f32/sse2/vec4.rs",
             ContextBuilder::new_vec4().target_sse2().build(),
         ),
@@ -628,6 +730,12 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
         ("src/f64/dvec2.rs", ContextBuilder::new_dvec2().build()),
         ("src/f64/dvec3.rs", ContextBuilder::new_dvec3().build()),
         ("src/f64/dvec4.rs", ContextBuilder::new_dvec4().build()),
+        ("src/i8/i8vec2.rs", ContextBuilder::new_i8vec2().build()),
+        ("src/i8/i8vec3.rs", ContextBuilder::new_i8vec3().build()),
+        ("src/i8/i8vec4.rs", ContextBuilder::new_i8vec4().build()),
+        ("src/u8/u8vec2.rs", ContextBuilder::new_u8vec2().build()),
+        ("src/u8/u8vec3.rs", ContextBuilder::new_u8vec3().build()),
+        ("src/u8/u8vec4.rs", ContextBuilder::new_u8vec4().build()),
         ("src/i16/i16vec2.rs", ContextBuilder::new_i16vec2().build()),
         ("src/i16/i16vec3.rs", ContextBuilder::new_i16vec3().build()),
         ("src/i16/i16vec4.rs", ContextBuilder::new_i16vec4().build()),
@@ -648,6 +756,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
         ("src/u64/u64vec4.rs", ContextBuilder::new_u64vec4().build()),
         ("src/f32/scalar/quat.rs", ContextBuilder::new_quat().build()),
         (
+            "src/f32/neon/quat.rs",
+            ContextBuilder::new_quat().target_neon().build(),
+        ),
+        (
             "src/f32/sse2/quat.rs",
             ContextBuilder::new_quat().target_sse2().build(),
         ),
@@ -661,6 +773,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
         ),
         ("src/f64/dquat.rs", ContextBuilder::new_dquat().build()),
         ("src/f32/scalar/mat2.rs", ContextBuilder::new_mat2().build()),
+        (
+            "src/f32/neon/mat2.rs",
+            ContextBuilder::new_mat2().target_neon().build(),
+        ),
         (
             "src/f32/sse2/mat2.rs",
             ContextBuilder::new_mat2().target_sse2().build(),
@@ -680,6 +796,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
             ContextBuilder::new_mat3a().build(),
         ),
         (
+            "src/f32/neon/mat3a.rs",
+            ContextBuilder::new_mat3a().target_neon().build(),
+        ),
+        (
             "src/f32/sse2/mat3a.rs",
             ContextBuilder::new_mat3a().target_sse2().build(),
         ),
@@ -692,6 +812,10 @@ pub fn build_output_pairs() -> HashMap<&'static str, tera::Context> {
             ContextBuilder::new_mat3a().target_coresimd().build(),
         ),
         ("src/f32/scalar/mat4.rs", ContextBuilder::new_mat4().build()),
+        (
+            "src/f32/neon/mat4.rs",
+            ContextBuilder::new_mat4().target_neon().build(),
+        ),
         (
             "src/f32/sse2/mat4.rs",
             ContextBuilder::new_mat4().target_sse2().build(),

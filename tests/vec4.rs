@@ -4,7 +4,7 @@
 mod support;
 
 macro_rules! impl_vec4_tests {
-    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident) => {
+    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident, $masknew:ident) => {
         glam_test!(test_const, {
             const V0: $vec4 = $vec4::splat(1 as $t);
             const V1: $vec4 = $vec4::new(1 as $t, 2 as $t, 3 as $t, 4 as $t);
@@ -51,6 +51,43 @@ macro_rules! impl_vec4_tests {
 
             let v = $vec4::new(t.0, t.1, t.2, t.3);
             assert_eq!(t, v.into());
+
+            assert_eq!(
+                $vec4::new(1 as $t, 0 as $t, 0 as $t, 0 as $t),
+                glam::BVec4::new(true, false, false, false).into()
+            );
+            assert_eq!(
+                $vec4::new(0 as $t, 1 as $t, 0 as $t, 0 as $t),
+                glam::BVec4::new(false, true, false, false).into()
+            );
+            assert_eq!(
+                $vec4::new(0 as $t, 0 as $t, 1 as $t, 0 as $t),
+                glam::BVec4::new(false, false, true, false).into()
+            );
+
+            #[cfg(not(feature = "scalar-math"))]
+            {
+                assert_eq!(
+                    $vec4::new(0 as $t, 0 as $t, 0 as $t, 1 as $t),
+                    glam::BVec4::new(false, false, false, true).into()
+                );
+                assert_eq!(
+                    $vec4::new(1 as $t, 0 as $t, 0 as $t, 0 as $t),
+                    glam::BVec4A::new(true, false, false, false).into()
+                );
+                assert_eq!(
+                    $vec4::new(0 as $t, 1 as $t, 0 as $t, 0 as $t),
+                    glam::BVec4A::new(false, true, false, false).into()
+                );
+                assert_eq!(
+                    $vec4::new(0 as $t, 0 as $t, 1 as $t, 0 as $t),
+                    glam::BVec4A::new(false, false, true, false).into()
+                );
+                assert_eq!(
+                    $vec4::new(0 as $t, 0 as $t, 0 as $t, 1 as $t),
+                    glam::BVec4A::new(false, false, false, true).into()
+                );
+            }
 
             assert_eq!($vec4::new(1 as $t, 0 as $t, 0 as $t, 0 as $t), $vec4::X);
             assert_eq!($vec4::new(0 as $t, 1 as $t, 0 as $t, 0 as $t), $vec4::Y);
@@ -115,6 +152,19 @@ macro_rules! impl_vec4_tests {
             assert_eq!($vec4::ONE, v);
         });
 
+        glam_test!(test_map, {
+            let v = $vec4::new(1 as $t, 2 as $t, 3 as $t, 4 as $t);
+            assert_eq!(v.map(|n| n + 3 as $t), v + $vec4::splat(3 as $t));
+            assert_eq!(v.map(|_| 0 as $t), $vec4::ZERO);
+        });
+
+        glam_test!(test_with, {
+            assert_eq!($vec4::X, $vec4::ZERO.with_x(1 as $t));
+            assert_eq!($vec4::Y, $vec4::ZERO.with_y(1 as $t));
+            assert_eq!($vec4::Z, $vec4::ZERO.with_z(1 as $t));
+            assert_eq!($vec4::W, $vec4::ZERO.with_w(1 as $t));
+        });
+
         glam_test!(test_accessors, {
             let mut a = $vec4::ZERO;
             a.x = 1 as $t;
@@ -170,23 +220,79 @@ macro_rules! impl_vec4_tests {
         });
 
         glam_test!(test_ops, {
-            let a = $new(2 as $t, 4 as $t, 8 as $t, 16 as $t);
-            assert_eq!($new(4 as $t, 8 as $t, 16 as $t, 32 as $t), a + a);
-            assert_eq!($new(2 as $t, 4 as $t, 8 as $t, 16 as $t), 0 as $t + a);
+            let a = $new(2 as $t, 4 as $t, 8 as $t, 10 as $t);
+            assert_eq!($new(4 as $t, 8 as $t, 16 as $t, 20 as $t), a + a);
+            assert_eq!($new(2 as $t, 4 as $t, 8 as $t, 10 as $t), 0 as $t + a);
             assert_eq!($new(0 as $t, 0 as $t, 0 as $t, 0 as $t), a - a);
-            assert_eq!($new(14 as $t, 12 as $t, 8 as $t, 0 as $t), 16 as $t - a);
-            assert_eq!($new(4 as $t, 16 as $t, 64 as $t, 256 as $t), a * a);
-            assert_eq!($new(4 as $t, 8 as $t, 16 as $t, 32 as $t), a * 2 as $t);
-            assert_eq!($new(4 as $t, 8 as $t, 16 as $t, 32 as $t), 2 as $t * a);
+            assert_eq!($new(8 as $t, 6 as $t, 2 as $t, 0 as $t), 10 as $t - a);
+            assert_eq!($new(4 as $t, 16 as $t, 64 as $t, 100 as $t), a * a);
+            assert_eq!($new(4 as $t, 8 as $t, 16 as $t, 20 as $t), a * 2 as $t);
+            assert_eq!($new(4 as $t, 8 as $t, 16 as $t, 20 as $t), 2 as $t * a);
             assert_eq!($new(1 as $t, 1 as $t, 1 as $t, 1 as $t), a / a);
-            assert_eq!($new(1 as $t, 2 as $t, 4 as $t, 8 as $t), a / 2 as $t);
-            assert_eq!($new(8 as $t, 4 as $t, 2 as $t, 1 as $t), 16 as $t / a);
+            assert_eq!($new(1 as $t, 2 as $t, 4 as $t, 5 as $t), a / 2 as $t);
+            assert_eq!($new(8 as $t, 4 as $t, 2 as $t, 1.6 as $t), 16 as $t / a);
             assert_eq!($new(0 as $t, 0 as $t, 0 as $t, 0 as $t), a % a);
             assert_eq!($new(0 as $t, 1 as $t, 1 as $t, 1 as $t), a % (a - 1 as $t));
             assert_eq!($new(0 as $t, 0 as $t, 0 as $t, 0 as $t), a % 1 as $t);
             assert_eq!($new(2 as $t, 1 as $t, 2 as $t, 1 as $t), a % 3 as $t);
-            assert_eq!($new(1 as $t, 1 as $t, 1 as $t, 1 as $t), 17 as $t % a);
-            assert_eq!($new(2 as $t, 4 as $t, 0 as $t, 0 as $t), a % 8 as $t);
+            assert_eq!($new(1 as $t, 1 as $t, 1 as $t, 7 as $t), 17 as $t % a);
+            assert_eq!($new(2 as $t, 4 as $t, 0 as $t, 2 as $t), a % 8 as $t);
+        });
+
+        glam_test!(test_ops_propagated, {
+            let vec = $new(2 as $t, 4 as $t, 8 as $t, 10 as $t);
+            let scalar = 2 as $t;
+            let g_scalar = 10 as $t;
+
+            assert_eq!((vec + vec), (vec + &vec));
+            assert_eq!((vec + vec), (&vec + vec));
+            assert_eq!((vec + vec), (&vec + &vec));
+            assert_eq!((vec + scalar), (vec + &scalar));
+            assert_eq!((vec + scalar), (&vec + &scalar));
+            assert_eq!((vec + scalar), (&vec + scalar));
+            assert_eq!((scalar + vec), (&scalar + vec));
+            assert_eq!((scalar + vec), (&scalar + &vec));
+            assert_eq!((scalar + vec), (scalar + &vec));
+
+            assert_eq!((vec - vec), (vec - &vec));
+            assert_eq!((vec - vec), (&vec - vec));
+            assert_eq!((vec - vec), (&vec - &vec));
+            assert_eq!((vec - scalar), (vec - &scalar));
+            assert_eq!((vec - scalar), (&vec - &scalar));
+            assert_eq!((vec - scalar), (&vec - scalar));
+            assert_eq!((g_scalar - vec), (&g_scalar - vec));
+            assert_eq!((g_scalar - vec), (&g_scalar - &vec));
+            assert_eq!((g_scalar - vec), (g_scalar - &vec));
+
+            assert_eq!((vec * vec), (vec * &vec));
+            assert_eq!((vec * vec), (&vec * vec));
+            assert_eq!((vec * vec), (&vec * &vec));
+            assert_eq!((vec * scalar), (vec * &scalar));
+            assert_eq!((vec * scalar), (&vec * &scalar));
+            assert_eq!((vec * scalar), (&vec * scalar));
+            assert_eq!((scalar * vec), (&scalar * vec));
+            assert_eq!((scalar * vec), (&scalar * &vec));
+            assert_eq!((scalar * vec), (scalar * &vec));
+
+            assert_eq!((vec / vec), (vec / &vec));
+            assert_eq!((vec / vec), (&vec / vec));
+            assert_eq!((vec / vec), (&vec / &vec));
+            assert_eq!((vec / scalar), (vec / &scalar));
+            assert_eq!((vec / scalar), (&vec / &scalar));
+            assert_eq!((vec / scalar), (&vec / scalar));
+            assert_eq!((scalar / vec), (&scalar / vec));
+            assert_eq!((scalar / vec), (&scalar / &vec));
+            assert_eq!((scalar / vec), (scalar / &vec));
+
+            assert_eq!((vec % vec), (vec % &vec));
+            assert_eq!((vec % vec), (&vec % vec));
+            assert_eq!((vec % vec), (&vec % &vec));
+            assert_eq!((vec % scalar), (vec % &scalar));
+            assert_eq!((vec % scalar), (&vec % &scalar));
+            assert_eq!((vec % scalar), (&vec % scalar));
+            assert_eq!((scalar % vec), (&scalar % vec));
+            assert_eq!((scalar % vec), (&scalar % &vec));
+            assert_eq!((scalar % vec), (scalar % &vec));
         });
 
         glam_test!(test_assign_ops, {
@@ -221,6 +327,47 @@ macro_rules! impl_vec4_tests {
             assert_eq!($new(1 as $t, 2 as $t, 3 as $t, 4 as $t), b);
             b %= b;
             assert_eq!($new(0 as $t, 0 as $t, 0 as $t, 0 as $t), b);
+        });
+
+        glam_test!(test_assign_ops_propagation, {
+            let vec = $new(1 as $t, 2 as $t, 3 as $t, 4 as $t);
+            let mut a = vec;
+            let mut b = vec;
+            let scalar = 2 as $t;
+
+            a += &scalar;
+            b += scalar;
+            assert_eq!(b, a, "AddAssign<Scalar>");
+            a -= &scalar;
+            b -= scalar;
+            assert_eq!(b, a, "SubAssign<Scalar>");
+            a *= &scalar;
+            b *= scalar;
+            assert_eq!(b, a, "MulAssign<Scalar>");
+            a /= &scalar;
+            b /= scalar;
+            assert_eq!(b, a, "DivAssign<Scalar>");
+            a %= &scalar;
+            b %= scalar;
+            assert_eq!(b, a, "MulAssign<Scalar>");
+
+            a = vec;
+            b = vec;
+            a += &vec;
+            b += vec;
+            assert_eq!(b, a, "AddAssign<Vec>");
+            a -= &vec;
+            b -= vec;
+            assert_eq!(b, a, "SubAssign<Vec>");
+            a *= &vec;
+            b *= vec;
+            assert_eq!(b, a, "MulAssign<Vec>");
+            a /= &vec;
+            b /= vec;
+            assert_eq!(b, a, "DivAssign<Vec>");
+            a %= &vec;
+            b %= vec;
+            assert_eq!(b, a, "RemAssign<Vec>");
         });
 
         glam_test!(test_min_max, {
@@ -296,9 +443,9 @@ macro_rules! impl_vec4_tests {
         });
 
         glam_test!(test_sum_product, {
-            let a = $new(2 as $t, 3 as $t, 5 as $t, 7 as $t);
-            assert_eq!(a.element_sum(), 17 as $t);
-            assert_eq!(a.element_product(), 210 as $t);
+            let a = $new(2 as $t, 3 as $t, 4 as $t, 5 as $t);
+            assert_eq!(a.element_sum(), 14 as $t);
+            assert_eq!(a.element_product(), 120 as $t);
         });
 
         glam_test!(test_eq, {
@@ -356,6 +503,33 @@ macro_rules! impl_vec4_tests {
             should_panic!({ $vec4::from_slice(&[0 as $t; 3]) });
         });
 
+        glam_test!(test_mask_new, {
+            assert_eq!(
+                $mask::new(false, false, false, false),
+                $masknew(false, false, false, false)
+            );
+            assert_eq!(
+                $mask::new(false, false, true, true),
+                $masknew(false, false, true, true)
+            );
+            assert_eq!(
+                $mask::new(true, true, false, false),
+                $masknew(true, true, false, false)
+            );
+            assert_eq!(
+                $mask::new(false, true, false, true),
+                $masknew(false, true, false, true)
+            );
+            assert_eq!(
+                $mask::new(true, false, true, false),
+                $masknew(true, false, true, false)
+            );
+            assert_eq!(
+                $mask::new(true, true, true, true),
+                $masknew(true, true, true, true)
+            );
+        });
+
         glam_test!(test_mask_from_array_bool, {
             assert_eq!(
                 $mask::new(false, false, false, false),
@@ -382,6 +556,7 @@ macro_rules! impl_vec4_tests {
                 $mask::from([true, true, true, true])
             );
         });
+
         glam_test!(test_mask_into_array_u32, {
             assert_eq!(
                 Into::<[u32; 4]>::into($mask::new(false, false, false, false)),
@@ -661,6 +836,11 @@ macro_rules! impl_vec4_tests {
             let mut a = [0 as $t, 0 as $t, 0 as $t, 0 as $t];
             v.write_to_slice(&mut a);
             assert_eq!(v, $vec4::from_slice(&a));
+
+            let mut a = [0 as $t; 17];
+            v.write_to_slice(&mut a);
+            assert_eq!(v, $vec4::from_slice(&a[..4]));
+            assert_eq!([0 as $t; 13], a[4..]);
         });
 
         glam_test!(test_sum, {
@@ -678,8 +858,8 @@ macro_rules! impl_vec4_tests {
 }
 
 macro_rules! impl_vec4_signed_tests {
-    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident) => {
-        impl_vec4_tests!($t, $new, $vec4, $vec3, $vec2, $mask);
+    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident, $masknew:ident) => {
+        impl_vec4_tests!($t, $new, $vec4, $vec3, $vec2, $mask, $masknew);
 
         glam_test!(test_neg, {
             let a = $new(1 as $t, 2 as $t, 3 as $t, 4 as $t);
@@ -692,6 +872,11 @@ macro_rules! impl_vec4_signed_tests {
                 $new(0 as $t, -0 as $t, -0 as $t, -0 as $t),
                 -$new(-0 as $t, 0 as $t, 0 as $t, 0 as $t)
             );
+        });
+
+        glam_test!(test_neg_propagation, {
+            let a = $new(1 as $t, 2 as $t, 3 as $t, 4 as $t);
+            assert_eq!(-a, -(&a));
         });
 
         glam_test!(test_is_negative_bitmask, {
@@ -774,13 +959,108 @@ macro_rules! impl_vec4_signed_tests {
 }
 
 macro_rules! impl_vec4_signed_integer_tests {
-    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident) => {
-        impl_vec4_signed_tests!($t, $new, $vec4, $vec3, $vec2, $mask);
+    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident, $masknew:ident) => {
+        impl_vec4_signed_tests!($t, $new, $vec4, $vec3, $vec2, $mask, $masknew);
 
         glam_test!(test_signum, {
             assert_eq!($vec4::ZERO.signum(), $vec4::ZERO);
             assert_eq!($vec4::ONE.signum(), $vec4::ONE);
             assert_eq!((-$vec4::ONE).signum(), -$vec4::ONE);
+        });
+
+        glam_test!(test_manhattan_distance, {
+            assert_eq!(
+                $vec4::new(41, 8, 21, 87).manhattan_distance($vec4::new(49, 48, 28, 40)),
+                102
+            );
+            assert_eq!(
+                $vec4::new(19, 16, 100, 74).manhattan_distance($vec4::new(14, 55, 115, 48)),
+                85
+            );
+
+            assert_eq!(
+                $vec4::new(26, 2, 24, -22).manhattan_distance($vec4::new(26, 23, 6, 23)),
+                84
+            );
+
+            assert_eq!(
+                $vec4::new(41, 8, 21, 87).checked_manhattan_distance($vec4::new(49, 48, 28, 40)),
+                Some(102)
+            );
+            assert_eq!(
+                $vec4::new(19, 16, 100, 74).checked_manhattan_distance($vec4::new(14, 55, 115, 48)),
+                Some(85)
+            );
+
+            assert_eq!(
+                $vec4::new(26, 2, 24, -22).checked_manhattan_distance($vec4::new(26, 23, 6, 23)),
+                Some(84)
+            );
+
+            assert_eq!(
+                $vec4::new($t::MIN, $t::MIN, $t::MIN, $t::MIN)
+                    .checked_manhattan_distance($vec4::new($t::MAX, $t::MAX, $t::MAX, $t::MAX)),
+                None
+            );
+        });
+
+        glam_test!(test_chebyshev_distance, {
+            assert_eq!(
+                $vec4::new(41, 8, 21, 87).chebyshev_distance($vec4::new(49, 48, 28, 40)),
+                47
+            );
+            assert_eq!(
+                $vec4::new(119, 16, 100, 74).chebyshev_distance($vec4::new(14, 55, 115, 48)),
+                105
+            );
+            assert_eq!(
+                $vec4::new(26, 2, 24, -22).chebyshev_distance($vec4::new(26, 23, 6, 23)),
+                45
+            );
+        });
+    };
+}
+
+macro_rules! impl_vec4_unsigned_integer_tests {
+    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident, $masknew:ident) => {
+        impl_vec4_tests!($t, $new, $vec4, $vec3, $vec2, $mask, $masknew);
+
+        glam_test!(test_manhattan_distance, {
+            assert_eq!(
+                $vec4::new(41, 8, 21, 87).manhattan_distance($vec4::new(49, 48, 128, 40)),
+                202
+            );
+            assert_eq!(
+                $vec4::new(19, 16, 179, 174).manhattan_distance($vec4::new(14, 55, 115, 148)),
+                134
+            );
+
+            assert_eq!(
+                $vec4::new(41, 8, 21, 87).checked_manhattan_distance($vec4::new(49, 48, 128, 40)),
+                Some(202)
+            );
+            assert_eq!(
+                $vec4::new(19, 16, 179, 174)
+                    .checked_manhattan_distance($vec4::new(14, 55, 115, 148)),
+                Some(134)
+            );
+
+            assert_eq!(
+                $vec4::new($t::MIN, $t::MIN, $t::MIN, $t::MIN)
+                    .checked_manhattan_distance($vec4::new($t::MAX, $t::MAX, $t::MAX, $t::MAX)),
+                None
+            );
+        });
+
+        glam_test!(test_chebyshev_distance, {
+            assert_eq!(
+                $vec4::new(41, 8, 21, 87).chebyshev_distance($vec4::new(49, 48, 128, 40)),
+                107
+            );
+            assert_eq!(
+                $vec4::new(119, 16, 179, 174).chebyshev_distance($vec4::new(14, 55, 115, 148)),
+                105
+            );
         });
     };
 }
@@ -817,13 +1097,9 @@ macro_rules! impl_vec4_eq_hash_tests {
 }
 
 macro_rules! impl_vec4_float_tests {
-    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident) => {
-        impl_vec4_signed_tests!($t, $new, $vec4, $vec3, $vec2, $mask);
+    ($t:ident, $new:ident, $vec4:ident, $vec3:ident, $vec2:ident, $mask:ident, $masknew:ident) => {
+        impl_vec4_signed_tests!($t, $new, $vec4, $vec3, $vec2, $mask, $masknew);
         impl_vec_float_normalize_tests!($t, $vec4);
-
-        use core::$t::INFINITY;
-        use core::$t::NAN;
-        use core::$t::NEG_INFINITY;
 
         glam_test!(test_vec4_nan, {
             assert!($vec4::NAN.is_nan());
@@ -964,10 +1240,10 @@ macro_rules! impl_vec4_float_tests {
             assert_eq!($vec4::new(0.0, 0.0, 0.0, 11.123).round().w, 11.0);
             assert_eq!($vec4::new(0.0, 0.0, 11.501, 0.0).round().z, 12.0);
             assert_eq!(
-                $vec4::new(NEG_INFINITY, INFINITY, 1.0, -1.0).round(),
-                $vec4::new(NEG_INFINITY, INFINITY, 1.0, -1.0)
+                $vec4::new($t::NEG_INFINITY, $t::INFINITY, 1.0, -1.0).round(),
+                $vec4::new($t::NEG_INFINITY, $t::INFINITY, 1.0, -1.0)
             );
-            assert!($vec4::new(NAN, 0.0, 0.0, 1.0).round().x.is_nan());
+            assert!($vec4::new($t::NAN, 0.0, 0.0, 1.0).round().x.is_nan());
         });
 
         glam_test!(test_floor, {
@@ -976,24 +1252,36 @@ macro_rules! impl_vec4_float_tests {
                 $vec4::new(1.0, 1.0, -2.0, 1.0)
             );
             assert_eq!(
-                $vec4::new(INFINITY, NEG_INFINITY, 0.0, 0.0).floor(),
-                $vec4::new(INFINITY, NEG_INFINITY, 0.0, 0.0)
+                $vec4::new($t::INFINITY, $t::NEG_INFINITY, 0.0, 0.0).floor(),
+                $vec4::new($t::INFINITY, $t::NEG_INFINITY, 0.0, 0.0)
             );
-            assert!($vec4::new(0.0, NAN, 0.0, 0.0).floor().y.is_nan());
+            assert!($vec4::new(0.0, $t::NAN, 0.0, 0.0).floor().y.is_nan());
             assert_eq!(
                 $vec4::new(-0.0, -2000000.123, 10000000.123, 1000.9).floor(),
                 $vec4::new(-0.0, -2000001.0, 10000000.0, 1000.0)
             );
         });
 
-        glam_test!(test_fract, {
+        glam_test!(test_fract_gl, {
             assert_approx_eq!(
-                $vec4::new(1.35, 1.5, -1.5, 1.999).fract(),
+                $vec4::new(1.35, 1.5, -1.5, 1.999).fract_gl(),
                 $vec4::new(0.35, 0.5, 0.5, 0.999)
             );
             assert_approx_eq!(
-                $vec4::new(-0.0, -200000.123, 1000000.123, 1000.9).fract(),
+                $vec4::new(-0.0, -200000.123, 1000000.123, 1000.9).fract_gl(),
                 $vec4::new(0.0, 0.877, 0.123, 0.9),
+                0.002
+            );
+        });
+
+        glam_test!(test_fract, {
+            assert_approx_eq!(
+                $vec4::new(1.35, 1.5, -1.5, 1.999).fract(),
+                $vec4::new(0.35, 0.5, -0.5, 0.999)
+            );
+            assert_approx_eq!(
+                $vec4::new(-0.0, -200000.123, 1000000.123, 1000.9).fract(),
+                $vec4::new(0.0, -0.123, 0.123, 0.9),
                 0.002
             );
         });
@@ -1004,10 +1292,10 @@ macro_rules! impl_vec4_float_tests {
                 $vec4::new(2.0, 2.0, -1.0, 1235.0)
             );
             assert_eq!(
-                $vec4::new(INFINITY, NEG_INFINITY, 0.0, 0.0).ceil(),
-                $vec4::new(INFINITY, NEG_INFINITY, 0.0, 0.0)
+                $vec4::new($t::INFINITY, $t::NEG_INFINITY, 0.0, 0.0).ceil(),
+                $vec4::new($t::INFINITY, $t::NEG_INFINITY, 0.0, 0.0)
             );
-            assert!($vec4::new(0.0, 0.0, NAN, 0.0).ceil().z.is_nan());
+            assert!($vec4::new(0.0, 0.0, $t::NAN, 0.0).ceil().z.is_nan());
             assert_eq!(
                 $vec4::new(-1234.1234, -2000000.123, 1000000.123, 1000.9).ceil(),
                 $vec4::new(-1234.0, -2000000.0, 1000001.0, 1001.0)
@@ -1020,10 +1308,10 @@ macro_rules! impl_vec4_float_tests {
                 $vec4::new(1.0, 1.0, -1.0, 1.0)
             );
             assert_eq!(
-                $vec4::new(INFINITY, NEG_INFINITY, 0.0, 0.0).trunc(),
-                $vec4::new(INFINITY, NEG_INFINITY, 0.0, 0.0)
+                $vec4::new($t::INFINITY, $t::NEG_INFINITY, 0.0, 0.0).trunc(),
+                $vec4::new($t::INFINITY, $t::NEG_INFINITY, 0.0, 0.0)
             );
-            assert!($vec4::new(0.0, NAN, 0.0, 0.0).trunc().y.is_nan());
+            assert!($vec4::new(0.0, $t::NAN, 0.0, 0.0).trunc().y.is_nan());
             assert_eq!(
                 $vec4::new(-0.0, -2000000.123, 10000000.123, 1000.9).trunc(),
                 $vec4::new(-0.0, -2000000.0, 10000000.0, 1000.0)
@@ -1038,6 +1326,21 @@ macro_rules! impl_vec4_float_tests {
             assert_approx_eq!($vec4::ZERO, v0.lerp(v1, 0.5));
         });
 
+        glam_test!(test_lerp_big_difference, {
+            let v0 = $vec4::new(-1e30, -1e30, -1e30, -1e30);
+            let v1 = $vec4::new(16.0, 16.0, 16.0, 16.0);
+            assert_approx_eq!(v0, v0.lerp(v1, 0.0));
+            assert_approx_eq!(v1, v0.lerp(v1, 1.0));
+        });
+
+        glam_test!(test_move_towards, {
+            let v0 = $vec4::new(-1.0, -1.0, -1.0, -1.0);
+            let v1 = $vec4::new(1.0, 1.0, 1.0, 1.0);
+            assert_approx_eq!(v0, v0.move_towards(v1, 0.0));
+            assert_approx_eq!(v1, v0.move_towards(v1, v0.distance(v1)));
+            assert_approx_eq!(v1, v0.move_towards(v1, v0.distance(v1) + 1.0));
+        });
+
         glam_test!(test_midpoint, {
             let v0 = $vec4::new(-1.0, -1.0, -1.0, -1.0);
             let v1 = $vec4::new(1.0, 1.0, 1.0, 1.0);
@@ -1049,10 +1352,10 @@ macro_rules! impl_vec4_float_tests {
         glam_test!(test_is_finite, {
             assert!($vec4::new(0.0, 0.0, 0.0, 0.0).is_finite());
             assert!($vec4::new(-1e-10, 1.0, 1e10, 42.0).is_finite());
-            assert!(!$vec4::new(INFINITY, 0.0, 0.0, 0.0).is_finite());
-            assert!(!$vec4::new(0.0, NAN, 0.0, 0.0).is_finite());
-            assert!(!$vec4::new(0.0, 0.0, NEG_INFINITY, 0.0).is_finite());
-            assert!(!$vec4::new(0.0, 0.0, 0.0, NAN).is_finite());
+            assert!(!$vec4::new($t::INFINITY, 0.0, 0.0, 0.0).is_finite());
+            assert!(!$vec4::new(0.0, $t::NAN, 0.0, 0.0).is_finite());
+            assert!(!$vec4::new(0.0, 0.0, $t::NEG_INFINITY, 0.0).is_finite());
+            assert!(!$vec4::new(0.0, 0.0, 0.0, $t::NAN).is_finite());
             assert!(!$vec4::INFINITY.is_finite());
             assert!(!$vec4::NEG_INFINITY.is_finite());
         });
@@ -1130,6 +1433,27 @@ macro_rules! impl_vec4_float_tests {
                 ),
                 $vec4::new(-0.5, 1.0, -5.0, -1.0)
             );
+        });
+
+        glam_test!(test_fmt_float, {
+            let a = $vec4::new(1.0, 2.0, 3.0, 4.0);
+            assert_eq!(format!("{:.2}", a), "[1.00, 2.00, 3.00, 4.00]");
+        });
+
+        glam_test!(test_reflect, {
+            let incident = $vec4::new(1.0, -1.0, 1.0, 1.0);
+            let normal = $vec4::Y;
+            assert_approx_eq!(incident.reflect(normal), $vec4::ONE);
+        });
+
+        glam_test!(test_refract, {
+            let incident = $vec4::NEG_ONE.normalize();
+            let normal = $vec4::ONE.normalize();
+            assert_approx_eq!(incident.refract(normal, 0.5), incident);
+
+            let incident = $vec4::new(1.0, -1.0, 0.0, 0.0).normalize();
+            let normal = $vec4::Y;
+            assert_approx_eq!(incident.refract(normal, 1.5), $vec4::ZERO);
         });
     };
 }
@@ -1313,9 +1637,9 @@ macro_rules! impl_vec4_bit_op_tests {
 
 mod vec4 {
     #[cfg(feature = "scalar-math")]
-    use glam::BVec4;
+    use glam::{bvec4, BVec4};
     #[cfg(not(feature = "scalar-math"))]
-    use glam::BVec4A;
+    use glam::{bvec4a, BVec4A};
     use glam::{vec4, Vec2, Vec3, Vec4};
 
     glam_test!(test_align, {
@@ -1375,10 +1699,18 @@ mod vec4 {
     }
 
     glam_test!(test_as, {
-        use glam::{DVec4, I16Vec4, I64Vec4, IVec4, U16Vec4, U64Vec4, UVec4, Vec4};
+        use glam::{DVec4, I16Vec4, I64Vec4, I8Vec4, IVec4, U16Vec4, U64Vec4, U8Vec4, UVec4, Vec4};
         assert_eq!(
             DVec4::new(-1.0, -2.0, -3.0, -4.0),
             Vec4::new(-1.0, -2.0, -3.0, -4.0).as_dvec4()
+        );
+        assert_eq!(
+            I8Vec4::new(-1, -2, -3, -4),
+            Vec4::new(-1.0, -2.0, -3.0, -4.0).as_i8vec4()
+        );
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            Vec4::new(1.0, 2.0, 3.0, 4.0).as_u8vec4()
         );
         assert_eq!(
             I16Vec4::new(-1, -2, -3, -4),
@@ -1410,6 +1742,14 @@ mod vec4 {
             DVec4::new(-1.0, -2.0, -3.0, -4.0).as_vec4()
         );
         assert_eq!(
+            I8Vec4::new(-1, -2, -3, -4),
+            DVec4::new(-1.0, -2.0, -3.0, -4.0).as_i8vec4()
+        );
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            DVec4::new(1.0, 2.0, 3.0, 4.0).as_u8vec4()
+        );
+        assert_eq!(
             I16Vec4::new(-1, -2, -3, -4),
             DVec4::new(-1.0, -2.0, -3.0, -4.0).as_i16vec4()
         );
@@ -1436,11 +1776,78 @@ mod vec4 {
 
         assert_eq!(
             Vec4::new(-1.0, -2.0, -3.0, -4.0),
+            I8Vec4::new(-1, -2, -3, -4).as_vec4()
+        );
+        assert_eq!(
+            DVec4::new(-1.0, -2.0, -3.0, -4.0),
+            I8Vec4::new(-1, -2, -3, -4).as_dvec4()
+        );
+        assert_eq!(U8Vec4::new(1, 2, 3, 4), I8Vec4::new(1, 2, 3, 4).as_u8vec4());
+        assert_eq!(
+            I16Vec4::new(-1, -2, -3, -4),
+            I8Vec4::new(-1, -2, -3, -4).as_i16vec4()
+        );
+        assert_eq!(
+            U16Vec4::new(1, 2, 3, 4),
+            I8Vec4::new(1, 2, 3, 4).as_u16vec4()
+        );
+        assert_eq!(
+            IVec4::new(-1, -2, -3, -4),
+            I8Vec4::new(-1, -2, -3, -4).as_ivec4()
+        );
+        assert_eq!(UVec4::new(1, 2, 3, 4), I8Vec4::new(1, 2, 3, 4).as_uvec4());
+        assert_eq!(
+            I64Vec4::new(-1, -2, -3, -4),
+            I8Vec4::new(-1, -2, -3, -4).as_i64vec4()
+        );
+        assert_eq!(
+            U64Vec4::new(1, 2, 3, 4),
+            I8Vec4::new(1, 2, 3, 4).as_u64vec4()
+        );
+
+        assert_eq!(
+            Vec4::new(1.0, 2.0, 3.0, 4.0),
+            U8Vec4::new(1, 2, 3, 4).as_vec4()
+        );
+        assert_eq!(
+            DVec4::new(1.0, 2.0, 3.0, 4.0),
+            U8Vec4::new(1, 2, 3, 4).as_dvec4()
+        );
+        assert_eq!(I8Vec4::new(1, 2, 3, 4), U8Vec4::new(1, 2, 3, 4).as_i8vec4());
+        assert_eq!(
+            I16Vec4::new(1, 2, 3, 4),
+            U8Vec4::new(1, 2, 3, 4).as_i16vec4()
+        );
+        assert_eq!(
+            U16Vec4::new(1, 2, 3, 4),
+            U8Vec4::new(1, 2, 3, 4).as_u16vec4()
+        );
+        assert_eq!(IVec4::new(1, 2, 3, 4), U8Vec4::new(1, 2, 3, 4).as_ivec4());
+        assert_eq!(UVec4::new(1, 2, 3, 4), U8Vec4::new(1, 2, 3, 4).as_uvec4());
+        assert_eq!(
+            I64Vec4::new(1, 2, 3, 4),
+            U8Vec4::new(1, 2, 3, 4).as_i64vec4()
+        );
+        assert_eq!(
+            U64Vec4::new(1, 2, 3, 4),
+            U8Vec4::new(1, 2, 3, 4).as_u64vec4()
+        );
+
+        assert_eq!(
+            Vec4::new(-1.0, -2.0, -3.0, -4.0),
             I16Vec4::new(-1, -2, -3, -4).as_vec4()
         );
         assert_eq!(
             DVec4::new(-1.0, -2.0, -3.0, -4.0),
             I16Vec4::new(-1, -2, -3, -4).as_dvec4()
+        );
+        assert_eq!(
+            I8Vec4::new(-1, -2, -3, -4),
+            I16Vec4::new(-1, -2, -3, -4).as_i8vec4()
+        );
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            I16Vec4::new(1, 2, 3, 4).as_u8vec4()
         );
         assert_eq!(
             U16Vec4::new(1, 2, 3, 4),
@@ -1469,6 +1876,14 @@ mod vec4 {
             U16Vec4::new(1, 2, 3, 4).as_dvec4()
         );
         assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            U16Vec4::new(1, 2, 3, 4).as_i8vec4()
+        );
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U16Vec4::new(1, 2, 3, 4).as_u8vec4()
+        );
+        assert_eq!(
             I16Vec4::new(1, 2, 3, 4),
             U16Vec4::new(1, 2, 3, 4).as_i16vec4()
         );
@@ -1491,6 +1906,11 @@ mod vec4 {
             DVec4::new(-1.0, -2.0, -3.0, -4.0),
             IVec4::new(-1, -2, -3, -4).as_dvec4()
         );
+        assert_eq!(
+            I8Vec4::new(-1, -2, -3, -4),
+            IVec4::new(-1, -2, -3, -4).as_i8vec4()
+        );
+        assert_eq!(U8Vec4::new(1, 2, 3, 4), IVec4::new(1, 2, 3, 4).as_u8vec4());
         assert_eq!(UVec4::new(1, 2, 3, 4), IVec4::new(1, 2, 3, 4).as_uvec4());
         assert_eq!(
             I16Vec4::new(-1, -2, -3, -4),
@@ -1517,6 +1937,8 @@ mod vec4 {
             DVec4::new(1.0, 2.0, 3.0, 4.0),
             UVec4::new(1, 2, 3, 4).as_dvec4()
         );
+        assert_eq!(I8Vec4::new(1, 2, 3, 4), UVec4::new(1, 2, 3, 4).as_i8vec4());
+        assert_eq!(U8Vec4::new(1, 2, 3, 4), UVec4::new(1, 2, 3, 4).as_u8vec4());
         assert_eq!(
             I16Vec4::new(1, 2, 3, 4),
             UVec4::new(1, 2, 3, 4).as_i16vec4()
@@ -1544,6 +1966,14 @@ mod vec4 {
             I64Vec4::new(-1, -2, -3, -4).as_dvec4()
         );
         assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            I64Vec4::new(1, 2, 3, 4).as_u8vec4()
+        );
+        assert_eq!(
+            I8Vec4::new(-1, -2, -3, -4),
+            I64Vec4::new(-1, -2, -3, -4).as_i8vec4()
+        );
+        assert_eq!(
             U16Vec4::new(1, 2, 3, 4),
             I64Vec4::new(1, 2, 3, 4).as_u16vec4()
         );
@@ -1568,6 +1998,14 @@ mod vec4 {
         assert_eq!(
             DVec4::new(1.0, 2.0, 3.0, 4.0),
             U64Vec4::new(1, 2, 3, 4).as_dvec4()
+        );
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            U64Vec4::new(1, 2, 3, 4).as_i8vec4()
+        );
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U64Vec4::new(1, 2, 3, 4).as_u8vec4()
         );
         assert_eq!(
             I16Vec4::new(1, 2, 3, 4),
@@ -1598,14 +2036,14 @@ mod vec4 {
     });
 
     #[cfg(not(feature = "scalar-math"))]
-    impl_vec4_float_tests!(f32, vec4, Vec4, Vec3, Vec2, BVec4A);
+    impl_vec4_float_tests!(f32, vec4, Vec4, Vec3, Vec2, BVec4A, bvec4a);
 
     #[cfg(feature = "scalar-math")]
-    impl_vec4_float_tests!(f32, vec4, Vec4, Vec3, Vec2, BVec4);
+    impl_vec4_float_tests!(f32, vec4, Vec4, Vec3, Vec2, BVec4, bvec4);
 }
 
 mod dvec4 {
-    use glam::{dvec4, BVec4, DVec2, DVec3, DVec4, IVec4, UVec4, Vec4};
+    use glam::{bvec4, dvec4, BVec4, DVec2, DVec3, DVec4, IVec4, UVec4, Vec4};
 
     glam_test!(test_align, {
         use std::mem;
@@ -1633,12 +2071,368 @@ mod dvec4 {
         );
     });
 
-    impl_vec4_float_tests!(f64, dvec4, DVec4, DVec3, DVec2, BVec4);
+    impl_vec4_float_tests!(f64, dvec4, DVec4, DVec3, DVec2, BVec4, bvec4);
+}
+
+mod i8vec4 {
+    use glam::{
+        bvec4, i8vec4, BVec4, I16Vec4, I64Vec4, I8Vec2, I8Vec3, I8Vec4, IVec4, U16Vec4, U64Vec4,
+        U8Vec4, UVec4,
+    };
+
+    glam_test!(test_align, {
+        use std::mem;
+        assert_eq!(4, mem::size_of::<I8Vec4>());
+        #[cfg(not(feature = "cuda"))]
+        assert_eq!(1, mem::align_of::<I8Vec4>());
+        #[cfg(feature = "cuda")]
+        assert_eq!(4, mem::align_of::<I8Vec4>());
+    });
+
+    glam_test!(test_try_from, {
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            I8Vec4::try_from(U8Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(I8Vec4::try_from(U8Vec4::new(u8::MAX, 2, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(U8Vec4::new(1, u8::MAX, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(U8Vec4::new(1, 2, u8::MAX, 4)).is_err());
+        assert!(I8Vec4::try_from(U8Vec4::new(1, 2, 3, u8::MAX)).is_err());
+
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            I8Vec4::try_from(I16Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(I8Vec4::try_from(I16Vec4::new(i16::MAX, 2, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(I16Vec4::new(1, i16::MAX, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(I16Vec4::new(1, 2, i16::MAX, 4)).is_err());
+        assert!(I8Vec4::try_from(I16Vec4::new(1, 2, 3, i16::MAX)).is_err());
+
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            I8Vec4::try_from(U16Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(I8Vec4::try_from(U16Vec4::new(u16::MAX, 2, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(U16Vec4::new(1, u16::MAX, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(U16Vec4::new(1, 2, u16::MAX, 4)).is_err());
+        assert!(I8Vec4::try_from(U16Vec4::new(1, 2, 3, u16::MAX)).is_err());
+
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            I8Vec4::try_from(IVec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(I8Vec4::try_from(IVec4::new(i32::MAX, 2, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(IVec4::new(1, i32::MAX, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(IVec4::new(1, 2, i32::MAX, 4)).is_err());
+        assert!(I8Vec4::try_from(IVec4::new(1, 2, 3, i32::MAX)).is_err());
+
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            I8Vec4::try_from(UVec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(I8Vec4::try_from(UVec4::new(u32::MAX, 2, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(UVec4::new(1, u32::MAX, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(UVec4::new(1, 2, u32::MAX, 4)).is_err());
+        assert!(I8Vec4::try_from(UVec4::new(1, 2, 3, u32::MAX)).is_err());
+
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            I8Vec4::try_from(I64Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(I8Vec4::try_from(I64Vec4::new(i64::MAX, 2, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(I64Vec4::new(1, i64::MAX, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(I64Vec4::new(1, 2, i64::MAX, 4)).is_err());
+        assert!(I8Vec4::try_from(I64Vec4::new(1, 2, 3, i64::MAX)).is_err());
+
+        assert_eq!(
+            I8Vec4::new(1, 2, 3, 4),
+            I8Vec4::try_from(U64Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(I8Vec4::try_from(U64Vec4::new(u64::MAX, 2, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(U64Vec4::new(1, u64::MAX, 3, 4)).is_err());
+        assert!(I8Vec4::try_from(U64Vec4::new(1, 2, u64::MAX, 4)).is_err());
+        assert!(I8Vec4::try_from(U64Vec4::new(1, 2, 3, u64::MAX)).is_err());
+    });
+
+    glam_test!(test_wrapping_add, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, 5, i8::MIN, 0).wrapping_add(I8Vec4::new(1, 3, i8::MAX, 0)),
+            I8Vec4::new(i8::MIN, 8, -1, 0),
+        );
+    });
+
+    glam_test!(test_wrapping_sub, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, 5, i8::MIN, 0).wrapping_sub(I8Vec4::new(1, 3, i8::MAX, 0)),
+            I8Vec4::new(126, 2, 1, 0)
+        );
+    });
+
+    glam_test!(test_wrapping_mul, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, 5, i8::MIN, 0).wrapping_mul(I8Vec4::new(3, 3, 5, 1)),
+            I8Vec4::new(125, 15, -128, 0)
+        );
+    });
+
+    glam_test!(test_wrapping_div, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, 5, i8::MIN, 0).wrapping_div(I8Vec4::new(3, 3, 5, 1)),
+            I8Vec4::new(42, 1, -25, 0)
+        );
+    });
+
+    glam_test!(test_saturating_add, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, i8::MIN, 0, 0).saturating_add(I8Vec4::new(1, -1, 2, 3)),
+            I8Vec4::new(i8::MAX, i8::MIN, 2, 3)
+        );
+    });
+
+    glam_test!(test_saturating_sub, {
+        assert_eq!(
+            I8Vec4::new(i8::MIN, i8::MAX, 0, 0).saturating_sub(I8Vec4::new(1, -1, 2, 3)),
+            I8Vec4::new(i8::MIN, i8::MAX, -2, -3)
+        );
+    });
+
+    glam_test!(test_saturating_mul, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, i8::MIN, 0, 0).saturating_mul(I8Vec4::new(2, 2, 0, 0)),
+            I8Vec4::new(i8::MAX, i8::MIN, 0, 0)
+        );
+    });
+
+    glam_test!(test_saturating_div, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, i8::MIN, 0, 0).saturating_div(I8Vec4::new(2, 2, 3, 4)),
+            I8Vec4::new(63, -64, 0, 0)
+        );
+    });
+
+    glam_test!(test_wrapping_add_unsigned, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, i8::MAX, i8::MAX, i8::MAX)
+                .wrapping_add_unsigned(U8Vec4::new(1, 1, 1, 1)),
+            I8Vec4::new(i8::MIN, i8::MIN, i8::MIN, i8::MIN)
+        );
+    });
+
+    glam_test!(test_wrapping_sub_unsigned, {
+        assert_eq!(
+            I8Vec4::new(i8::MIN, i8::MIN, i8::MIN, i8::MIN)
+                .wrapping_sub_unsigned(U8Vec4::new(1, 1, 1, 1)),
+            I8Vec4::new(i8::MAX, i8::MAX, i8::MAX, i8::MAX)
+        );
+    });
+
+    glam_test!(test_saturating_add_unsigned, {
+        assert_eq!(
+            I8Vec4::new(i8::MAX, i8::MAX, i8::MAX, i8::MAX)
+                .saturating_add_unsigned(U8Vec4::new(1, 1, 1, 1)),
+            I8Vec4::new(i8::MAX, i8::MAX, i8::MAX, i8::MAX)
+        );
+    });
+
+    glam_test!(test_saturating_sub_unsigned, {
+        assert_eq!(
+            I8Vec4::new(i8::MIN, i8::MIN, i8::MIN, i8::MIN)
+                .saturating_sub_unsigned(U8Vec4::new(1, 1, 1, 1)),
+            I8Vec4::new(i8::MIN, i8::MIN, i8::MIN, i8::MIN)
+        );
+    });
+
+    impl_vec4_signed_integer_tests!(i8, i8vec4, I8Vec4, I8Vec3, I8Vec2, BVec4, bvec4);
+    impl_vec4_eq_hash_tests!(i8, i8vec4);
+
+    impl_vec4_scalar_shift_op_tests!(I8Vec4, -2, 2);
+    impl_vec4_shift_op_tests!(I8Vec4);
+
+    impl_vec4_scalar_bit_op_tests!(I8Vec4, -2, 2);
+    impl_vec4_bit_op_tests!(I8Vec4, -2, 2);
+}
+
+mod u8vec4 {
+    use glam::{
+        bvec4, u8vec4, BVec4, I16Vec4, I64Vec4, I8Vec4, IVec4, U16Vec4, U64Vec4, U8Vec2, U8Vec3,
+        U8Vec4, UVec4,
+    };
+
+    glam_test!(test_align, {
+        use std::mem;
+        assert_eq!(4, mem::size_of::<U8Vec4>());
+        #[cfg(not(feature = "cuda"))]
+        assert_eq!(1, mem::align_of::<U8Vec4>());
+        #[cfg(feature = "cuda")]
+        assert_eq!(4, mem::align_of::<U8Vec4>());
+    });
+
+    glam_test!(test_try_from, {
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U8Vec4::try_from(I8Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U8Vec4::try_from(I8Vec4::new(-1, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I8Vec4::new(1, -2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I8Vec4::new(1, 2, -3, 4)).is_err());
+        assert!(U8Vec4::try_from(I8Vec4::new(1, 2, 3, -4)).is_err());
+
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U8Vec4::try_from(I16Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U8Vec4::try_from(I16Vec4::new(-1, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I16Vec4::new(1, -2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I16Vec4::new(1, 2, -3, 4)).is_err());
+        assert!(U8Vec4::try_from(I16Vec4::new(1, 2, 3, -4)).is_err());
+
+        assert!(U8Vec4::try_from(I16Vec4::new(i16::MAX, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I16Vec4::new(1, i16::MAX, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I16Vec4::new(1, 2, i16::MAX, 4)).is_err());
+        assert!(U8Vec4::try_from(I16Vec4::new(1, 2, 3, i16::MAX)).is_err());
+
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U8Vec4::try_from(U16Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U8Vec4::try_from(U16Vec4::new(u16::MAX, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(U16Vec4::new(1, u16::MAX, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(U16Vec4::new(1, 2, u16::MAX, 4)).is_err());
+        assert!(U8Vec4::try_from(U16Vec4::new(1, 2, 3, u16::MAX)).is_err());
+
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U8Vec4::try_from(IVec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U8Vec4::try_from(IVec4::new(-1, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(IVec4::new(1, -2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(IVec4::new(1, 2, -3, 4)).is_err());
+        assert!(U8Vec4::try_from(IVec4::new(1, 2, 3, -4)).is_err());
+
+        assert!(U8Vec4::try_from(IVec4::new(i32::MAX, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(IVec4::new(1, i32::MAX, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(IVec4::new(1, 2, i32::MAX, 4)).is_err());
+        assert!(U8Vec4::try_from(IVec4::new(1, 2, 3, i32::MAX)).is_err());
+
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U8Vec4::try_from(UVec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U8Vec4::try_from(UVec4::new(u32::MAX, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(UVec4::new(1, u32::MAX, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(UVec4::new(1, 2, u32::MAX, 4)).is_err());
+        assert!(U8Vec4::try_from(UVec4::new(1, 2, 3, u32::MAX)).is_err());
+
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U8Vec4::try_from(I64Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U8Vec4::try_from(I64Vec4::new(-1, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I64Vec4::new(1, -2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I64Vec4::new(1, 2, -3, 4)).is_err());
+        assert!(U8Vec4::try_from(I64Vec4::new(1, 2, 3, -4)).is_err());
+
+        assert!(U8Vec4::try_from(I64Vec4::new(i64::MAX, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I64Vec4::new(1, i64::MAX, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(I64Vec4::new(1, 2, i64::MAX, 4)).is_err());
+        assert!(U8Vec4::try_from(I64Vec4::new(1, 2, 3, i64::MAX)).is_err());
+
+        assert_eq!(
+            U8Vec4::new(1, 2, 3, 4),
+            U8Vec4::try_from(U64Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U8Vec4::try_from(U64Vec4::new(u64::MAX, 2, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(U64Vec4::new(1, u64::MAX, 3, 4)).is_err());
+        assert!(U8Vec4::try_from(U64Vec4::new(1, 2, u64::MAX, 4)).is_err());
+        assert!(U8Vec4::try_from(U64Vec4::new(1, 2, 3, u64::MAX)).is_err());
+    });
+
+    glam_test!(test_wrapping_add, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, 5, u8::MAX, 0).wrapping_add(U8Vec4::new(1, 3, u8::MAX, 0)),
+            U8Vec4::new(0, 8, 254, 0),
+        );
+    });
+
+    glam_test!(test_wrapping_sub, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, 5, u8::MAX - 1, 0).wrapping_sub(U8Vec4::new(1, 3, u8::MAX, 0)),
+            U8Vec4::new(254, 2, 255, 0)
+        );
+    });
+
+    glam_test!(test_wrapping_mul, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, 5, u8::MAX, 0).wrapping_mul(U8Vec4::new(3, 3, 5, 1)),
+            U8Vec4::new(253, 15, 251, 0)
+        );
+    });
+
+    glam_test!(test_wrapping_div, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, 5, u8::MAX, 0).wrapping_div(U8Vec4::new(3, 3, 5, 1)),
+            U8Vec4::new(85, 1, 51, 0)
+        );
+    });
+
+    glam_test!(test_saturating_add, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, u8::MAX, 0, 0).saturating_add(U8Vec4::new(1, u8::MAX, 2, 3)),
+            U8Vec4::new(u8::MAX, u8::MAX, 2, 3)
+        );
+    });
+
+    glam_test!(test_saturating_sub, {
+        assert_eq!(
+            U8Vec4::new(0, u8::MAX, 0, 0).saturating_sub(U8Vec4::new(1, 1, 2, 3)),
+            U8Vec4::new(0, 254, 0, 0)
+        );
+    });
+
+    glam_test!(test_saturating_mul, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, u8::MAX, 0, 0).saturating_mul(U8Vec4::new(2, u8::MAX, 0, 0)),
+            U8Vec4::new(u8::MAX, u8::MAX, 0, 0)
+        );
+    });
+
+    glam_test!(test_saturating_div, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, u8::MAX, 0, 0).saturating_div(U8Vec4::new(2, u8::MAX, 3, 4)),
+            U8Vec4::new(127, 1, 0, 0)
+        );
+    });
+
+    glam_test!(test_wrapping_add_signed, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, u8::MAX, u8::MAX, u8::MAX)
+                .wrapping_add_signed(I8Vec4::new(1, 1, 1, 1)),
+            U8Vec4::new(u8::MIN, u8::MIN, u8::MIN, u8::MIN)
+        );
+    });
+
+    glam_test!(test_saturating_add_signed, {
+        assert_eq!(
+            U8Vec4::new(u8::MAX, u8::MAX, u8::MAX, u8::MAX)
+                .saturating_add_signed(I8Vec4::new(1, 1, 1, 1)),
+            U8Vec4::new(u8::MAX, u8::MAX, u8::MAX, u8::MAX)
+        );
+    });
+
+    impl_vec4_unsigned_integer_tests!(u8, u8vec4, U8Vec4, U8Vec3, U8Vec2, BVec4, bvec4);
+    impl_vec4_eq_hash_tests!(u8, u8vec4);
+
+    impl_vec4_scalar_shift_op_tests!(U8Vec4, 0, 2);
+    impl_vec4_shift_op_tests!(U8Vec4);
+
+    impl_vec4_scalar_bit_op_tests!(U8Vec4, 0, 2);
+    impl_vec4_bit_op_tests!(U8Vec4, 0, 2);
 }
 
 mod i16vec4 {
     use glam::{
-        i16vec4, BVec4, I16Vec2, I16Vec3, I16Vec4, I64Vec4, IVec4, U16Vec4, U64Vec4, UVec4,
+        bvec4, i16vec4, BVec4, I16Vec2, I16Vec3, I16Vec4, I64Vec4, I8Vec4, IVec4, U16Vec4, U64Vec4,
+        U8Vec4, UVec4,
     };
 
     glam_test!(test_align, {
@@ -1651,6 +2445,15 @@ mod i16vec4 {
     });
 
     glam_test!(test_try_from, {
+        assert_eq!(
+            I16Vec4::new(1, 2, 3, 4),
+            I16Vec4::from(U8Vec4::new(1, 2, 3, 4))
+        );
+        assert_eq!(
+            I16Vec4::new(1, 2, 3, 4),
+            I16Vec4::from(I8Vec4::new(1, 2, 3, 4))
+        );
+
         assert_eq!(
             I16Vec4::new(1, 2, 3, 4),
             I16Vec4::try_from(U16Vec4::new(1, 2, 3, 4)).unwrap()
@@ -1785,7 +2588,7 @@ mod i16vec4 {
         );
     });
 
-    impl_vec4_signed_integer_tests!(i16, i16vec4, I16Vec4, I16Vec3, I16Vec2, BVec4);
+    impl_vec4_signed_integer_tests!(i16, i16vec4, I16Vec4, I16Vec3, I16Vec2, BVec4, bvec4);
     impl_vec4_eq_hash_tests!(i16, i16vec4);
 
     impl_vec4_scalar_shift_op_tests!(I16Vec4, -2, 2);
@@ -1797,7 +2600,8 @@ mod i16vec4 {
 
 mod u16vec4 {
     use glam::{
-        u16vec4, BVec4, I16Vec4, I64Vec4, IVec4, U16Vec2, U16Vec3, U16Vec4, U64Vec4, UVec4,
+        bvec4, u16vec4, BVec4, I16Vec4, I64Vec4, I8Vec4, IVec4, U16Vec2, U16Vec3, U16Vec4, U64Vec4,
+        U8Vec4, UVec4,
     };
 
     glam_test!(test_align, {
@@ -1810,6 +2614,20 @@ mod u16vec4 {
     });
 
     glam_test!(test_try_from, {
+        assert_eq!(
+            U16Vec4::new(1, 2, 3, 4),
+            U16Vec4::try_from(I8Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U16Vec4::try_from(I8Vec4::new(-1, 2, 3, 4)).is_err());
+        assert!(U16Vec4::try_from(I8Vec4::new(1, -2, 3, 4)).is_err());
+        assert!(U16Vec4::try_from(I8Vec4::new(1, 2, -3, 4)).is_err());
+        assert!(U16Vec4::try_from(I8Vec4::new(1, 2, 3, -4)).is_err());
+
+        assert_eq!(
+            U16Vec4::new(1, 2, 3, 4),
+            U16Vec4::from(U8Vec4::new(1, 2, 3, 4))
+        );
+
         assert_eq!(
             U16Vec4::new(1, 2, 3, 4),
             U16Vec4::try_from(I16Vec4::new(1, 2, 3, 4)).unwrap()
@@ -1943,7 +2761,7 @@ mod u16vec4 {
         );
     });
 
-    impl_vec4_tests!(u16, u16vec4, U16Vec4, U16Vec3, U16Vec2, BVec4);
+    impl_vec4_unsigned_integer_tests!(u16, u16vec4, U16Vec4, U16Vec3, U16Vec2, BVec4, bvec4);
     impl_vec4_eq_hash_tests!(u16, u16vec4);
 
     impl_vec4_scalar_shift_op_tests!(U16Vec4, 0, 2);
@@ -1954,7 +2772,10 @@ mod u16vec4 {
 }
 
 mod ivec4 {
-    use glam::{ivec4, BVec4, I16Vec4, I64Vec4, IVec2, IVec3, IVec4, U16Vec4, U64Vec4, UVec4};
+    use glam::{
+        bvec4, ivec4, BVec4, I16Vec4, I64Vec4, I8Vec4, IVec2, IVec3, IVec4, U16Vec4, U64Vec4,
+        U8Vec4, UVec4,
+    };
 
     glam_test!(test_align, {
         use std::mem;
@@ -1968,6 +2789,9 @@ mod ivec4 {
     });
 
     glam_test!(test_try_from, {
+        assert_eq!(IVec4::new(1, 2, 3, 4), IVec4::from(U8Vec4::new(1, 2, 3, 4)));
+        assert_eq!(IVec4::new(1, 2, 3, 4), IVec4::from(I8Vec4::new(1, 2, 3, 4)));
+
         assert_eq!(
             IVec4::new(1, 2, 3, 4),
             IVec4::from(U16Vec4::new(1, 2, 3, 4))
@@ -2093,7 +2917,7 @@ mod ivec4 {
         );
     });
 
-    impl_vec4_signed_integer_tests!(i32, ivec4, IVec4, IVec3, IVec2, BVec4);
+    impl_vec4_signed_integer_tests!(i32, ivec4, IVec4, IVec3, IVec2, BVec4, bvec4);
     impl_vec4_eq_hash_tests!(i32, ivec4);
 
     impl_vec4_scalar_shift_op_tests!(IVec4, -2, 2);
@@ -2104,7 +2928,10 @@ mod ivec4 {
 }
 
 mod uvec4 {
-    use glam::{uvec4, BVec4, I16Vec4, I64Vec4, IVec4, U16Vec4, U64Vec4, UVec2, UVec3, UVec4};
+    use glam::{
+        bvec4, uvec4, BVec4, I16Vec4, I64Vec4, I8Vec4, IVec4, U16Vec4, U64Vec4, U8Vec4, UVec2,
+        UVec3, UVec4,
+    };
 
     glam_test!(test_align, {
         use std::mem;
@@ -2118,6 +2945,17 @@ mod uvec4 {
     });
 
     glam_test!(test_try_from, {
+        assert_eq!(
+            UVec4::new(1, 2, 3, 4),
+            UVec4::try_from(I8Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(UVec4::try_from(I8Vec4::new(-1, 2, 3, 4)).is_err());
+        assert!(UVec4::try_from(I8Vec4::new(1, -2, 3, 4)).is_err());
+        assert!(UVec4::try_from(I8Vec4::new(1, 2, -3, 4)).is_err());
+        assert!(UVec4::try_from(I8Vec4::new(1, 2, 3, -4)).is_err());
+
+        assert_eq!(UVec4::new(1, 2, 3, 4), UVec4::from(U8Vec4::new(1, 2, 3, 4)));
+
         assert_eq!(
             UVec4::new(1, 2, 3, 4),
             UVec4::try_from(I16Vec4::new(1, 2, 3, 4)).unwrap()
@@ -2237,7 +3075,7 @@ mod uvec4 {
         );
     });
 
-    impl_vec4_tests!(u32, uvec4, UVec4, UVec3, UVec2, BVec4);
+    impl_vec4_unsigned_integer_tests!(u32, uvec4, UVec4, UVec3, UVec2, BVec4, bvec4);
     impl_vec4_eq_hash_tests!(u32, uvec4);
 
     impl_vec4_scalar_shift_op_tests!(UVec4, 0, 2);
@@ -2249,7 +3087,8 @@ mod uvec4 {
 
 mod i64vec4 {
     use glam::{
-        i64vec4, BVec4, I16Vec4, I64Vec2, I64Vec3, I64Vec4, IVec4, U16Vec4, U64Vec4, UVec4,
+        bvec4, i64vec4, BVec4, I16Vec4, I64Vec2, I64Vec3, I64Vec4, I8Vec4, IVec4, U16Vec4, U64Vec4,
+        U8Vec4, UVec4,
     };
 
     glam_test!(test_align, {
@@ -2264,6 +3103,14 @@ mod i64vec4 {
     });
 
     glam_test!(test_try_from, {
+        assert_eq!(
+            I64Vec4::new(1, 2, 3, 4),
+            I64Vec4::from(I8Vec4::new(1, 2, 3, 4))
+        );
+        assert_eq!(
+            I64Vec4::new(1, 2, 3, 4),
+            I64Vec4::from(U8Vec4::new(1, 2, 3, 4))
+        );
         assert_eq!(
             I64Vec4::new(1, 2, 3, 4),
             I64Vec4::from(I16Vec4::new(1, 2, 3, 4))
@@ -2323,7 +3170,7 @@ mod i64vec4 {
         );
     });
 
-    impl_vec4_signed_integer_tests!(i64, i64vec4, I64Vec4, I64Vec3, I64Vec2, BVec4);
+    impl_vec4_signed_integer_tests!(i64, i64vec4, I64Vec4, I64Vec3, I64Vec2, BVec4, bvec4);
     impl_vec4_eq_hash_tests!(i64, i64vec4);
 
     impl_vec4_scalar_shift_op_tests!(I64Vec4, -2, 2);
@@ -2335,7 +3182,8 @@ mod i64vec4 {
 
 mod u64vec4 {
     use glam::{
-        u64vec4, BVec4, I16Vec4, I64Vec4, IVec4, U16Vec4, U64Vec2, U64Vec3, U64Vec4, UVec4,
+        bvec4, u64vec4, BVec4, I16Vec4, I64Vec4, I8Vec4, IVec4, U16Vec4, U64Vec2, U64Vec3, U64Vec4,
+        U8Vec4, UVec4,
     };
 
     glam_test!(test_align, {
@@ -2350,6 +3198,20 @@ mod u64vec4 {
     });
 
     glam_test!(test_try_from, {
+        assert_eq!(
+            U64Vec4::new(1, 2, 3, 4),
+            U64Vec4::try_from(I8Vec4::new(1, 2, 3, 4)).unwrap()
+        );
+        assert!(U64Vec4::try_from(I8Vec4::new(-1, 2, 3, 4)).is_err());
+        assert!(U64Vec4::try_from(I8Vec4::new(1, -2, 3, 4)).is_err());
+        assert!(U64Vec4::try_from(I8Vec4::new(1, 2, -3, 4)).is_err());
+        assert!(U64Vec4::try_from(I8Vec4::new(1, 2, 3, -4)).is_err());
+
+        assert_eq!(
+            U64Vec4::new(1, 2, 3, 4),
+            U64Vec4::from(U8Vec4::new(1, 2, 3, 4))
+        );
+
         assert_eq!(
             U64Vec4::new(1, 2, 3, 4),
             U64Vec4::try_from(I16Vec4::new(1, 2, 3, 4)).unwrap()
@@ -2404,7 +3266,7 @@ mod u64vec4 {
         );
     });
 
-    impl_vec4_tests!(u64, u64vec4, U64Vec4, U64Vec3, U64Vec2, BVec4);
+    impl_vec4_unsigned_integer_tests!(u64, u64vec4, U64Vec4, U64Vec3, U64Vec2, BVec4, bvec4);
     impl_vec4_eq_hash_tests!(u64, u64vec4);
 
     impl_vec4_scalar_shift_op_tests!(U64Vec4, 0, 2);

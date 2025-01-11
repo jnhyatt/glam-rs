@@ -1,6 +1,5 @@
 // Generated from vec_mask.rs.tera template. Edit the template, not the generated file.
 
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::ops::*;
 
@@ -13,6 +12,13 @@ use core::arch::x86_64::*;
 union UnionCast {
     a: [u32; 4],
     v: BVec3A,
+}
+
+/// Creates a 3-dimensional `bool` vector mask.
+#[inline(always)]
+#[must_use]
+pub const fn bvec3a(x: bool, y: bool, z: bool) -> BVec3A {
+    BVec3A::new(x, y, z)
 }
 
 /// A 3-dimensional SIMD vector mask.
@@ -103,7 +109,7 @@ impl BVec3A {
         use crate::Vec3A;
         let mut v = Vec3A(self.0);
         v[index] = f32::from_bits(MASK[value as usize]);
-        *self = Self(v.0);
+        self.0 = v.0;
     }
 
     #[inline]
@@ -208,7 +214,6 @@ impl From<BVec3A> for __m128 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for BVec3A {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_u32_array();
@@ -223,7 +228,6 @@ impl fmt::Debug for BVec3A {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for BVec3A {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_bool_array();

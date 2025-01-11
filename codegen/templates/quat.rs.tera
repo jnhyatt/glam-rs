@@ -8,6 +8,8 @@
         {% set simd_t = "v128" %}
     {% elif is_coresimd %}
         {% set simd_t = "f32x4" %}
+    {% elif is_neon %}
+        {% set simd_t = "float32x4_t" %}
     {% endif %}
 {% endif %}
 
@@ -31,7 +33,7 @@
 
 use crate::{
     {{ scalar_t }}::math,
-    euler::{EulerFromQuaternion, EulerRot, EulerToQuaternion},
+    euler::{EulerRot, FromEuler, ToEuler},
     {% if scalar_t == "f32" %}
         DQuat, Mat3, Mat3A, Mat4, Vec2, Vec3, Vec3A, Vec4,
     {% elif scalar_t == "f64" %}
@@ -43,6 +45,8 @@ use crate::{
         wasm32::*,
     {% elif is_coresimd %}
         coresimd::*,
+    {% elif is_neon %}
+        neon::*,
     {% endif %}
 };
 
@@ -55,9 +59,10 @@ use core::arch::x86_64::*;
 use core::arch::wasm32::*;
 {% elif is_coresimd %}
 use core::simd::*;
+{% elif is_neon %}
+use core::arch::aarch64::*;
 {% endif %}
 
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::iter::{Product, Sum};
 use core::ops::{
@@ -67,7 +72,7 @@ use core::ops::{
     Add, Div, Mul, MulAssign, Neg, Sub
 };
 
-{% if is_sse2 %}
+{% if is_sse2 or is_neon %}
 #[repr(C)]
 union UnionCast {
     a: [f32; 4],
@@ -146,6 +151,10 @@ impl {{ self_t }} {
             Self(f32x4(x, y, z, w))
         {% elif is_coresimd %}
             Self(f32x4::from_array([x, y, z, w]))
+        {% elif is_neon %}
+            unsafe { UnionCast { a: [x, y, z, w] }.v }
+        {% else %}
+            unimplemented!()
         {% endif %}
     }
 
@@ -197,6 +206,9 @@ impl {{ self_t }} {
         {% if is_sse2 %}
             assert!(slice.len() >= 4);
             Self(unsafe { _mm_loadu_ps(slice.as_ptr()) })
+        {% elif is_neon %}
+            assert!(slice.len() >= 4);
+            Self(unsafe { vld1q_f32(slice.as_ptr()) })
         {% else %}
             Self::from_xyzw(slice[0], slice[1], slice[2], slice[3])
         {% endif %}
@@ -212,6 +224,9 @@ impl {{ self_t }} {
         {% if is_sse2 %}
             assert!(slice.len() >= 4);
             unsafe { _mm_storeu_ps(slice.as_mut_ptr(), self.0) }
+        {% elif is_neon %}
+            assert!(slice.len() >= 4);
+            unsafe { vst1q_f32(slice.as_mut_ptr(), self.0) }
         {% else %}
             slice[0] = self.x;
             slice[1] = self.y;
@@ -278,14 +293,22 @@ impl {{ self_t }} {
     #[inline]
     #[must_use]
     pub fn from_euler(euler: EulerRot, a: {{ scalar_t }}, b: {{ scalar_t }}, c: {{ scalar_t }}) -> Self {
-        euler.new_quat(a, b, c)
+        Self::from_euler_angles(euler, a, b, c)
     }
 
     /// From the columns of a 3x3 rotation matrix.
+    ///
+    /// Note if the input axes contain scales, shears, or other non-rotation transformations then
+    /// the output of this function is ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any axis is not normalized when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub(crate) fn from_rotation_axes(x_axis: {{ vec3_t }}, y_axis: {{ vec3_t }}, z_axis: {{ vec3_t }}) -> Self {
-        // Based on https://github.com/microsoft/DirectXMath `XM$quaternionRotationMatrix`
+        glam_assert!(x_axis.is_normalized() && y_axis.is_normalized() && z_axis.is_normalized());
+        // Based on https://github.com/microsoft/DirectXMath `XMQuaternionRotationMatrix`
         let (m00, m01, m02) = x_axis.into();
         let (m10, m11, m12) = y_axis.into();
         let (m20, m21, m22) = z_axis.into();
@@ -343,6 +366,13 @@ impl {{ self_t }} {
     }
 
     /// Creates a quaternion from a 3x3 rotation matrix.
+    ///
+    /// Note if the input matrix contain scales, shears, or other non-rotation transformations then
+    /// the resulting quaternion will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any input matrix column is not normalized when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn from_mat3(mat: &{{ mat3_t }}) -> Self {
@@ -355,6 +385,13 @@ impl {{ self_t }} {
 
 {% if scalar_t == "f32" %}
     /// Creates a quaternion from a 3x3 SIMD aligned rotation matrix.
+    ///
+    /// Note if the input matrix contain scales, shears, or other non-rotation transformations then
+    /// the resulting quaternion will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any input matrix column is not normalized when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn from_mat3a(mat: &Mat3A) -> Self {
@@ -366,7 +403,15 @@ impl {{ self_t }} {
     }
 {% endif %}
 
-    /// Creates a quaternion from a 3x3 rotation matrix inside a homogeneous 4x4 matrix.
+    /// Creates a quaternion from the upper 3x3 rotation matrix inside a homogeneous 4x4 matrix.
+    ///
+    /// Note if the upper 3x3 matrix contain scales, shears, or other non-rotation transformations
+    /// then the resulting quaternion will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any column of the upper 3x3 rotation matrix is not normalized when
+    /// `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn from_mat4(mat: &{{ mat4_t }}) -> Self {
@@ -395,7 +440,7 @@ impl {{ self_t }} {
         glam_assert!(from.is_normalized());
         glam_assert!(to.is_normalized());
 
-        const ONE_MINUS_EPS: {{ scalar_t }} = 1.0 - 2.0 * core::{{ scalar_t }}::EPSILON;
+        const ONE_MINUS_EPS: {{ scalar_t }} = 1.0 - 2.0 * {{ scalar_t }}::EPSILON;
         let dot = from.dot(to);
         if dot > ONE_MINUS_EPS {
             // 0° singularity: from ≈ to
@@ -451,7 +496,7 @@ impl {{ self_t }} {
         glam_assert!(from.is_normalized());
         glam_assert!(to.is_normalized());
 
-        const ONE_MINUS_EPSILON: {{ scalar_t }} = 1.0 - 2.0 * core::{{ scalar_t }}::EPSILON;
+        const ONE_MINUS_EPSILON: {{ scalar_t }} = 1.0 - 2.0 * {{ scalar_t }}::EPSILON;
         let dot = from.dot(to);
         if dot > ONE_MINUS_EPSILON {
             // 0° singularity: from ≈ to
@@ -470,6 +515,69 @@ impl {{ self_t }} {
             let len_rcp = 1.0 / math::sqrt(z * z + w * w);
             Self::from_xyzw(0.0, 0.0, z * len_rcp, w * len_rcp)
         }
+    }
+
+    /// Creates a quaterion rotation from a facing direction and an up direction.
+    ///
+    /// For a left-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_to_lh(dir: {{ vec3_t }}, up: {{ vec3_t }}) -> Self {
+        Self::look_to_rh(-dir, up)
+    }
+
+    /// Creates a quaterion rotation from facing direction and an up direction.
+    ///
+    /// For a right-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `dir` and `up` are not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_to_rh(dir: {{ vec3_t }}, up: {{ vec3_t }}) -> Self {
+        glam_assert!(dir.is_normalized());
+        glam_assert!(up.is_normalized());
+        let f = dir;
+        let s = f.cross(up).normalize();
+        let u = s.cross(f);
+
+        Self::from_rotation_axes(
+            {{ vec3_t }}::new(s.x, u.x, -f.x),
+            {{ vec3_t }}::new(s.y, u.y, -f.y),
+            {{ vec3_t }}::new(s.z, u.z, -f.z),
+        )
+    }
+
+    /// Creates a left-handed view matrix using a camera position, a focal point, and an up
+    /// direction.
+    ///
+    /// For a left-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=forward`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn look_at_lh(eye: {{ vec3_t }}, center: {{ vec3_t }}, up: {{ vec3_t }}) -> Self {
+        Self::look_to_lh(center.sub(eye).normalize(), up)
+    }
+
+    /// Creates a right-handed view matrix using a camera position, an up direction, and a focal
+    /// point.
+    ///
+    /// For a right-handed view coordinate system with `+X=right`, `+Y=up` and `+Z=back`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `up` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    pub fn look_at_rh(eye: {{ vec3_t }}, center: {{ vec3_t }}, up: {{ vec3_t }}) -> Self {
+        Self::look_to_rh(center.sub(eye).normalize(), up)
     }
 
     /// Returns the rotation axis (normalized) and angle (in radians) of `self`.
@@ -499,8 +607,8 @@ impl {{ self_t }} {
     /// Returns the rotation angles for the given euler rotation sequence.
     #[inline]
     #[must_use]
-    pub fn to_euler(self, euler: EulerRot) -> ({{ scalar_t }}, {{ scalar_t }}, {{ scalar_t }}) {
-        euler.convert_quat(self)
+    pub fn to_euler(self, order: EulerRot) -> ({{ scalar_t }}, {{ scalar_t }}, {{ scalar_t }}) {
+        self.to_euler_angles(order)
     }
 
     /// `[x, y, z, w]`
@@ -533,6 +641,11 @@ impl {{ self_t }} {
         {% elif is_coresimd %}
             const SIGN: f32x4 = f32x4::from_array([-1.0, -1.0, -1.0, 1.0]);
             Self(self.0.mul(SIGN))
+        {% elif is_neon %}
+            const SIGN: float32x4_t = f32x4_from_array([-1.0, -1.0, -1.0, 1.0]);
+            Self(unsafe { vmulq_f32(self.0, SIGN) })
+        {% else %}
+            unimplemented!()
         {% endif %}
     }
 
@@ -609,6 +722,7 @@ impl {{ self_t }} {
         {{ vec4_t }}::from(self).is_finite()
     }
 
+    /// Returns `true` if any elements are `NAN`.
     #[inline]
     #[must_use]
     pub fn is_nan(self) -> bool {
@@ -661,6 +775,29 @@ impl {{ self_t }} {
         math::acos_approx(math::abs(self.dot(rhs))) * 2.0
     }
 
+    /// Rotates towards `rhs` up to `max_angle` (in radians).
+    ///
+    /// When `max_angle` is `0.0`, the result will be equal to `self`. When `max_angle` is equal to
+    /// `self.angle_between(rhs)`, the result will be equal to `rhs`. If `max_angle` is negative,
+    /// rotates towards the exact opposite of `rhs`. Will not go past the target.
+    ///
+    /// Both quaternions must be normalized.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `self` or `rhs` are not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn rotate_towards(&self, rhs: Self, max_angle: {{ scalar_t }}) -> Self {
+        glam_assert!(self.is_normalized() && rhs.is_normalized());
+        let angle = self.angle_between(rhs);
+        if angle <= 1e-4 {
+            return rhs;
+        }
+        let s = (max_angle / angle).clamp(-1.0, 1.0);
+        self.slerp(rhs, s)
+    }
+
     /// Returns true if the absolute difference of all elements between `self` and `rhs`
     /// is less than or equal to `max_abs_diff`.
     ///
@@ -674,6 +811,12 @@ impl {{ self_t }} {
     #[must_use]
     pub fn abs_diff_eq(self, rhs: Self, max_abs_diff: {{ scalar_t }}) -> bool {
         {{ vec4_t }}::from(self).abs_diff_eq({{ vec4_t }}::from(rhs), max_abs_diff)
+    }
+
+    #[inline(always)]
+    #[must_use]
+    fn lerp_impl(self, end: Self, s: {{ scalar_t }}) -> Self {
+        (self * (1.0 - s) + end * s).normalize()
     }
 
     /// Performs a linear interpolation between `self` and `rhs` based on
@@ -693,49 +836,44 @@ impl {{ self_t }} {
         glam_assert!(end.is_normalized());
 
         {% if is_scalar %}
-            let start = self;
-            let dot = start.dot(end);
+            let dot = self.dot(end);
             let bias = if dot >= 0.0 { 1.0 } else { -1.0 };
-            let interpolated = start.add(end.mul(bias).sub(start).mul(s));
-            interpolated.normalize()
+            self.lerp_impl(end * bias, s)
         {% elif is_sse2 %}
             const NEG_ZERO: __m128 = m128_from_f32x4([-0.0; 4]);
-            let start = self.0;
-            let end = end.0;
             unsafe {
-                let dot = dot4_into_m128(start, end);
+                let dot = dot4_into_m128(self.0, end.0);
                 // Calculate the bias, if the dot product is positive or zero, there is no bias
                 // but if it is negative, we want to flip the 'end' rotation XYZW components
                 let bias = _mm_and_ps(dot, NEG_ZERO);
-                let interpolated = _mm_add_ps(
-                    _mm_mul_ps(_mm_sub_ps(_mm_xor_ps(end, bias), start), _mm_set_ps1(s)),
-                    start,
-                );
-                {{ self_t }}(interpolated).normalize()
+                self.lerp_impl(Self(_mm_xor_ps(end.0, bias)), s)
             }
         {% elif is_wasm32 %}
             const NEG_ZERO: v128 = v128_from_f32x4([-0.0; 4]);
-            let start = self.0;
-            let end = end.0;
-            let dot = dot4_into_v128(start, end);
+            let dot = dot4_into_v128(self.0, end.0);
             // Calculate the bias, if the dot product is positive or zero, there is no bias
             // but if it is negative, we want to flip the 'end' rotation XYZW components
             let bias = v128_and(dot, NEG_ZERO);
-            let interpolated = f32x4_add(
-                f32x4_mul(f32x4_sub(v128_xor(end, bias), start), f32x4_splat(s)),
-                start,
-            );
-            {{ self_t }}(interpolated).normalize()
+            self.lerp_impl(Self(v128_xor(end.0, bias)), s)
         {% elif is_coresimd %}
             const NEG_ZERO: f32x4 = f32x4::from_array([-0.0; 4]);
-            let start = self.0;
-            let end = end.0;
-            let dot = dot4_into_f32x4(start, end);
+            let dot = dot4_into_f32x4(self.0, end.0);
             // Calculate the bias, if the dot product is positive or zero, there is no bias
             // but if it is negative, we want to flip the 'end' rotation XYZW components
             let bias = f32x4_bitand(dot, NEG_ZERO);
-            let interpolated = start + ((f32x4_bitxor(end, bias) - start) * f32x4::splat(s));
-            {{ self_t }}(interpolated).normalize()
+            self.lerp_impl(Self(f32x4_bitxor(end.0, bias)), s)
+        {% elif is_neon %}
+            const NEG_ZERO: float32x4_t = f32x4_from_array([-0.0; 4]);
+            unsafe {
+                let dot = dot4_into_f32x4(self.0, end.0);
+                // Calculate the bias, if the dot product is positive or zero, there is no bias
+                // but if it is negative, we want to flip the 'end' rotation XYZW components
+                let bias = vandq_u32(vreinterpretq_u32_f32(dot), vreinterpretq_u32_f32(NEG_ZERO));
+                self.lerp_impl(
+                    Self(vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(end.0), bias))), s)
+            }
+        {% else %}
+            unimplemented!()
         {% endif %}
     }
 
@@ -755,8 +893,6 @@ impl {{ self_t }} {
         glam_assert!(self.is_normalized());
         glam_assert!(end.is_normalized());
 
-        const DOT_THRESHOLD: {{ scalar_t }} = 0.9995;
-
         // Note that a rotation can be represented by two quaternions: `q` and
         // `-q`. The slerp path between `q` and `end` will be different from the
         // path between `-q` and `end`. One path will take the long way around and
@@ -769,20 +905,13 @@ impl {{ self_t }} {
             dot = -dot;
         }
 
+        const DOT_THRESHOLD: {{ scalar_t }} = 1.0 - {{ scalar_t }}::EPSILON;
         if dot > DOT_THRESHOLD {
-            // assumes lerp returns a normalized quaternion
-            self.lerp(end, s)
+            // if above threshold perform linear interpolation to avoid divide by zero
+            self.lerp_impl(end, s)
         } else {
             let theta = math::acos_approx(dot);
-            {% if is_scalar %}
-                let scale1 = math::sin(theta * (1.0 - s));
-                let scale2 = math::sin(theta * s);
-                let theta_sin = math::sin(theta);
-
-                self.mul(scale1)
-                    .add(end.mul(scale2))
-                    .mul(1.0 / theta_sin)
-            {% elif is_sse2 %}
+            {% if is_sse2 %}
                 let x = 1.0 - s;
                 let y = s;
                 let z = 1.0;
@@ -800,40 +929,11 @@ impl {{ self_t }} {
                         theta_sin,
                     ))
                 }
-            {% elif is_wasm32 %}
-                // TODO: v128_sin is broken
-                // let x = 1.0 - s;
-                // let y = s;
-                // let z = 1.0;
-                // let w = 0.0;
-                // let tmp = f32x4_mul(f32x4_splat(theta), f32x4(x, y, z, w));
-                // let tmp = v128_sin(tmp);
-                let x = math::sin(theta * (1.0 - s));
-                let y = math::sin(theta * s);
-                let z = math::sin(theta);
-                let w = 0.0;
-                let tmp = f32x4(x, y, z, w);
-
-                let scale1 = i32x4_shuffle::<0, 0, 4, 4>(tmp, tmp);
-                let scale2 = i32x4_shuffle::<1, 1, 5, 5>(tmp, tmp);
-                let theta_sin = i32x4_shuffle::<2, 2, 6, 6>(tmp, tmp);
-
-                Self(f32x4_div(
-                    f32x4_add(f32x4_mul(self.0, scale1), f32x4_mul(end.0, scale2)),
-                    theta_sin,
-                ))
-            {% elif is_coresimd %}
-                let x = math::sin(theta * (1.0 - s));
-                let y = math::sin(theta * s);
-                let z = math::sin(theta);
-                let w = 0.0;
-                let tmp = f32x4::from_array([x, y, z, w]);
-
-                let scale1 = simd_swizzle!(tmp, [0, 0, 0, 0]);
-                let scale2 = simd_swizzle!(tmp, [1, 1, 1, 1]);
-                let theta_sin = simd_swizzle!(tmp, [2, 2, 2, 2]);
-
-                Self(self.0.mul(scale1).add(end.0.mul(scale2)).div(theta_sin))
+            {% else %}
+                let scale1 = math::sin(theta * (1.0 - s));
+                let scale2 = math::sin(theta * s);
+                let theta_sin = math::sin(theta);
+                ((self * scale1) + (end * scale2)) * (1.0 / theta_sin)
             {% endif %}
         }
     }
@@ -871,9 +971,6 @@ impl {{ self_t }} {
     #[inline]
     #[must_use]
     pub fn mul_quat(self, rhs: Self) -> Self {
-        glam_assert!(self.is_normalized());
-        glam_assert!(rhs.is_normalized());
-
         {% if is_scalar %}
             let (x0, y0, z0, w0) = self.into();
             let (x1, y1, z1, w1) = rhs.into();
@@ -984,10 +1081,59 @@ impl {{ self_t }} {
             let nlyrz_lxrz_lwrz_wlzrz = lyrz_lxrz_lwrz_lzrz * CONTROL_YXWZ;
             let result1 = lzry_lwry_nlxry_nlyry + nlyrz_lxrz_lwrz_wlzrz;
             Self(result0 + result1)
+        {% elif is_neon %}
+            unsafe {
+                let lhs = self.0;
+                let rhs = rhs.0;
+
+                const CONTROL_WZYX: float32x4_t = f32x4_from_array([1.0, -1.0, 1.0, -1.0]);
+                const CONTROL_ZWXY: float32x4_t = f32x4_from_array([1.0, 1.0, -1.0, -1.0]);
+                const CONTROL_YXWZ: float32x4_t = f32x4_from_array([-1.0, 1.0, 1.0, -1.0]);
+
+                let r_xxxx = vdupq_laneq_f32(lhs, 0);
+                let r_yyyy = vdupq_laneq_f32(lhs, 1);
+                let r_zzzz = vdupq_laneq_f32(lhs, 2);
+                let r_wwww = vdupq_laneq_f32(lhs, 3);
+
+                let lxrw_lyrw_lzrw_lwrw = vmulq_f32(r_wwww, rhs);
+                //let l_wzyx = simd_swizzle!(rhs, [3, 2, 1, 0]);
+                let l_wzyx = vrev64q_f32(rhs);
+                let l_wzyx = vextq_f32(l_wzyx, l_wzyx, 2);
+
+                let lwrx_lzrx_lyrx_lxrx = vmulq_f32(r_xxxx, l_wzyx);
+                //let l_zwxy = simd_swizzle!(l_wzyx, [1, 0, 3, 2]);
+                let l_zwxy = vrev64q_f32(l_wzyx);
+
+                let lwrx_nlzrx_lyrx_nlxrx = vmulq_f32(lwrx_lzrx_lyrx_lxrx, CONTROL_WZYX);
+
+                let lzry_lwry_lxry_lyry = vmulq_f32(r_yyyy, l_zwxy);
+                // let l_yxwz = simd_swizzle!(l_zwxy, [3, 2, 1, 0]);
+                let l_yxwz = vrev64q_f32(l_zwxy);
+                let l_yxwz = vextq_f32(l_yxwz, l_yxwz, 2);
+
+                let lzry_lwry_nlxry_nlyry = vmulq_f32(lzry_lwry_lxry_lyry, CONTROL_ZWXY);
+
+                let lyrz_lxrz_lwrz_lzrz = vmulq_f32(r_zzzz, l_yxwz);
+                let result0 = vaddq_f32(lxrw_lyrw_lzrw_lwrw, lwrx_nlzrx_lyrx_nlxrx);
+
+                let nlyrz_lxrz_lwrz_wlzrz = vmulq_f32(lyrz_lxrz_lwrz_lzrz, CONTROL_YXWZ);
+                let result1 = vaddq_f32(lzry_lwry_nlxry_nlyry, nlyrz_lxrz_lwrz_wlzrz);
+                Self(vaddq_f32(result0, result1))
+            }
+        {% else %}
+            unimplemented!()
         {% endif %}
     }
 
     /// Creates a quaternion from a 3x3 rotation matrix inside a 3D affine transform.
+    ///
+    /// Note if the input affine matrix contain scales, shears, or other non-rotation
+    /// transformations then the resulting quaternion will be ill-defined.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any input affine matrix column is not normalized when `glam_assert` is
+    /// enabled.
     #[inline]
     #[must_use]
     pub fn from_affine3(a: &crate::{{ affine3_t }}) -> Self {
@@ -1043,6 +1189,21 @@ impl {{ self_t }} {
                     .add(b.mul(dot3_into_f32x4(rhs.0, b).mul(TWO)))
                     .add(Vec3A(b).cross(rhs).0.mul(w.mul(TWO))),
             )
+        {% elif is_neon %}
+            unsafe {
+                let w = self.w;
+                let b = Vec3A::from(self.0);
+                let b2 = b.length_squared();
+                Vec3A(vaddq_f32(
+                    vaddq_f32(
+                        vmulq_n_f32(rhs.0, (w * w) - b2),
+                        vmulq_n_f32(b.0, rhs.dot(b) * 2.0),
+                    ),
+                    vmulq_n_f32(b.cross(rhs).0, w * 2.0),
+                ))
+            }
+        {% else %}
+            unimplemented!()
         {% endif %}
     }
 
@@ -1051,31 +1212,15 @@ impl {{ self_t }} {
     pub fn as_dquat(self) -> DQuat {
         DQuat::from_xyzw(self.x as f64, self.y as f64, self.z as f64, self.w as f64)
     }
-
-    #[inline]
-    #[must_use]
-    #[deprecated(since="0.24.2", note="Use as_dquat() instead")]
-    pub fn as_f64(self) -> DQuat {
-        self.as_dquat()
-    }
-
 {% elif scalar_t == "f64" %}
     #[inline]
     #[must_use]
     pub fn as_quat(self) -> Quat {
         Quat::from_xyzw(self.x as f32, self.y as f32, self.z as f32, self.w as f32)
     }
-
-    #[inline]
-    #[must_use]
-    #[deprecated(since="0.24.2", note="Use as_quat() instead")]
-    pub fn as_f32(self) -> Quat {
-        self.as_quat()
-    }
 {% endif %}
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for {{ self_t }} {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple(stringify!({{ self_t }}))
@@ -1087,10 +1232,13 @@ impl fmt::Debug for {{ self_t }} {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for {{ self_t }} {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "[{}, {}, {}, {}]", self.x, self.y, self.z, self.w)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(p) = f.precision() {
+            write!(f, "[{:.*}, {:.*}, {:.*}, {:.*}]", p, self.x, p, self.y, p, self.z, p, self.w)
+        } else {
+            write!(f, "[{}, {}, {}, {}]", self.x, self.y, self.z, self.w)
+        }
     }
 }
 

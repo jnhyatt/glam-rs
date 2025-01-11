@@ -1,8 +1,14 @@
 // Generated from vec_mask.rs.tera template. Edit the template, not the generated file.
 
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::ops::*;
+
+/// Creates a 3-dimensional `bool` vector mask.
+#[inline(always)]
+#[must_use]
+pub const fn bvec3a(x: bool, y: bool, z: bool) -> BVec3A {
+    BVec3A::new(x, y, z)
+}
 
 /// A 3-dimensional `u32` vector mask.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -191,7 +197,6 @@ impl Not for BVec3A {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for BVec3A {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_u32_array();
@@ -206,7 +211,6 @@ impl fmt::Debug for BVec3A {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for BVec3A {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_bool_array();

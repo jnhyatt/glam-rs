@@ -2,7 +2,6 @@
 
 use crate::{f64::math, BVec2, DVec3, IVec2, UVec2, Vec2};
 
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::iter::{Product, Sum};
 use core::{f32, ops::*};
@@ -78,6 +77,16 @@ impl DVec2 {
         Self { x: v, y: v }
     }
 
+    /// Returns a vector containing each element of `self` modified by a mapping function `f`.
+    #[inline]
+    #[must_use]
+    pub fn map<F>(self, f: F) -> Self
+    where
+        F: Fn(f64) -> f64,
+    {
+        Self::new(f(self.x), f(self.y))
+    }
+
     /// Creates a vector from the elements in `if_true` and `if_false`, selecting which to use
     /// for each element of `self`.
     ///
@@ -114,6 +123,7 @@ impl DVec2 {
     #[inline]
     #[must_use]
     pub const fn from_slice(slice: &[f64]) -> Self {
+        assert!(slice.len() >= 2);
         Self::new(slice[0], slice[1])
     }
 
@@ -124,8 +134,7 @@ impl DVec2 {
     /// Panics if `slice` is less than 2 elements long.
     #[inline]
     pub fn write_to_slice(self, slice: &mut [f64]) {
-        slice[0] = self.x;
-        slice[1] = self.y;
+        slice[..2].copy_from_slice(&self.to_array());
     }
 
     /// Creates a 3D vector from `self` and the given `z` value.
@@ -133,6 +142,22 @@ impl DVec2 {
     #[must_use]
     pub const fn extend(self, z: f64) -> DVec3 {
         DVec3::new(self.x, self.y, z)
+    }
+
+    /// Creates a 2D vector from `self` with the given value of `x`.
+    #[inline]
+    #[must_use]
+    pub fn with_x(mut self, x: f64) -> Self {
+        self.x = x;
+        self
+    }
+
+    /// Creates a 2D vector from `self` with the given value of `y`.
+    #[inline]
+    #[must_use]
+    pub fn with_y(mut self, y: f64) -> Self {
+        self.y = y;
+        self
     }
 
     /// Computes the dot product of `self` and `rhs`.
@@ -341,6 +366,13 @@ impl DVec2 {
         self.x.is_finite() && self.y.is_finite()
     }
 
+    /// Performs `is_finite` on each element of self, returning a vector mask of the results.
+    ///
+    /// In other words, this computes `[x.is_finite(), y.is_finite(), ...]`.
+    pub fn is_finite_mask(self) -> BVec2 {
+        BVec2::new(self.x.is_finite(), self.y.is_finite())
+    }
+
     /// Returns `true` if any elements are `NaN`.
     #[inline]
     #[must_use]
@@ -350,7 +382,7 @@ impl DVec2 {
 
     /// Performs `is_nan` on each element of self, returning a vector mask of the results.
     ///
-    /// In other words, this computes `[x.is_nan(), y.is_nan(), z.is_nan(), w.is_nan()]`.
+    /// In other words, this computes `[x.is_nan(), y.is_nan(), ...]`.
     #[inline]
     #[must_use]
     pub fn is_nan_mask(self) -> BVec2 {
@@ -422,13 +454,13 @@ impl DVec2 {
 
     /// Returns `self` normalized to length 1.0.
     ///
-    /// For valid results, `self` must _not_ be of length zero, nor very close to zero.
+    /// For valid results, `self` must be finite and _not_ of length zero, nor very close to zero.
     ///
     /// See also [`Self::try_normalize()`] and [`Self::normalize_or_zero()`].
     ///
     /// Panics
     ///
-    /// Will panic if `self` is zero length when `glam_assert` is enabled.
+    /// Will panic if the resulting normalized vector is not finite when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn normalize(self) -> Self {
@@ -519,6 +551,7 @@ impl DVec2 {
     /// # Panics
     ///
     /// Will panic if `rhs` has a length of zero when `glam_assert` is enabled.
+    #[doc(alias("plane"))]
     #[inline]
     #[must_use]
     pub fn reject_from(self, rhs: Self) -> Self {
@@ -549,6 +582,7 @@ impl DVec2 {
     /// # Panics
     ///
     /// Will panic if `rhs` is not normalized when `glam_assert` is enabled.
+    #[doc(alias("plane"))]
     #[inline]
     #[must_use]
     pub fn reject_from_normalized(self, rhs: Self) -> Self {
@@ -599,13 +633,27 @@ impl DVec2 {
         }
     }
 
-    /// Returns a vector containing the fractional part of the vector, e.g. `self -
-    /// self.floor()`.
+    /// Returns a vector containing the fractional part of the vector as `self - self.trunc()`.
+    ///
+    /// Note that this differs from the GLSL implementation of `fract` which returns
+    /// `self - self.floor()`.
     ///
     /// Note that this is fast but not precise for large numbers.
     #[inline]
     #[must_use]
     pub fn fract(self) -> Self {
+        self - self.trunc()
+    }
+
+    /// Returns a vector containing the fractional part of the vector as `self - self.floor()`.
+    ///
+    /// Note that this differs from the Rust implementation of `fract` which returns
+    /// `self - self.trunc()`.
+    ///
+    /// Note that this is fast but not precise for large numbers.
+    #[inline]
+    #[must_use]
+    pub fn fract_gl(self) -> Self {
         self - self.floor()
     }
 
@@ -643,7 +691,22 @@ impl DVec2 {
     #[inline]
     #[must_use]
     pub fn lerp(self, rhs: Self, s: f64) -> Self {
-        self + ((rhs - self) * s)
+        self * (1.0 - s) + rhs * s
+    }
+
+    /// Moves towards `rhs` based on the value `d`.
+    ///
+    /// When `d` is `0.0`, the result will be equal to `self`. When `d` is equal to
+    /// `self.distance(rhs)`, the result will be equal to `rhs`. Will not go past `rhs`.
+    #[inline]
+    #[must_use]
+    pub fn move_towards(&self, rhs: Self, d: f64) -> Self {
+        let a = rhs - *self;
+        let len = a.length();
+        if len <= d || len <= 1e-4 {
+            return rhs;
+        }
+        *self + a / len * d
     }
 
     /// Calculates the midpoint between `self` and `rhs`.
@@ -671,14 +734,15 @@ impl DVec2 {
         self.sub(rhs).abs().cmple(Self::splat(max_abs_diff)).all()
     }
 
-    /// Returns a vector with a length no less than `min` and no more than `max`
+    /// Returns a vector with a length no less than `min` and no more than `max`.
     ///
     /// # Panics
     ///
-    /// Will panic if `min` is greater than `max` when `glam_assert` is enabled.
+    /// Will panic if `min` is greater than `max`, or if either `min` or `max` is negative, when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn clamp_length(self, min: f64, max: f64) -> Self {
+        glam_assert!(0.0 <= min);
         glam_assert!(min <= max);
         let length_sq = self.length_squared();
         if length_sq < min * min {
@@ -690,10 +754,15 @@ impl DVec2 {
         }
     }
 
-    /// Returns a vector with a length no more than `max`
+    /// Returns a vector with a length no more than `max`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `max` is negative when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn clamp_length_max(self, max: f64) -> Self {
+        glam_assert!(0.0 <= max);
         let length_sq = self.length_squared();
         if length_sq > max * max {
             max * (self / math::sqrt(length_sq))
@@ -702,10 +771,15 @@ impl DVec2 {
         }
     }
 
-    /// Returns a vector with a length no less than `min`
+    /// Returns a vector with a length no less than `min`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `min` is negative when `glam_assert` is enabled.
     #[inline]
     #[must_use]
     pub fn clamp_length_min(self, min: f64) -> Self {
+        glam_assert!(0.0 <= min);
         let length_sq = self.length_squared();
         if length_sq < min * min {
             min * (self / math::sqrt(length_sq))
@@ -730,6 +804,44 @@ impl DVec2 {
         )
     }
 
+    /// Returns the reflection vector for a given incident vector `self` and surface normal
+    /// `normal`.
+    ///
+    /// `normal` must be normalized.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `normal` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn reflect(self, normal: Self) -> Self {
+        glam_assert!(normal.is_normalized());
+        self - 2.0 * self.dot(normal) * normal
+    }
+
+    /// Returns the refraction direction for a given incident vector `self`, surface normal
+    /// `normal` and ratio of indices of refraction, `eta`. When total internal reflection occurs,
+    /// a zero vector will be returned.
+    ///
+    /// `self` and `normal` must be normalized.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `self` or `normal` is not normalized when `glam_assert` is enabled.
+    #[inline]
+    #[must_use]
+    pub fn refract(self, normal: Self, eta: f64) -> Self {
+        glam_assert!(self.is_normalized());
+        glam_assert!(normal.is_normalized());
+        let n_dot_i = normal.dot(self);
+        let k = 1.0 - eta * eta * (1.0 - n_dot_i * n_dot_i);
+        if k >= 0.0 {
+            eta * self - (eta * n_dot_i + math::sqrt(k)) * normal
+        } else {
+            Self::ZERO
+        }
+    }
+
     /// Creates a 2D vector containing `[angle.cos(), angle.sin()]`. This can be used in
     /// conjunction with the [`rotate()`][Self::rotate()] method, e.g.
     /// `DVec2::from_angle(PI).rotate(DVec2::Y)` will create the vector `[-1, 0]`
@@ -750,12 +862,22 @@ impl DVec2 {
         math::atan2(self.y, self.x)
     }
 
-    /// Returns the angle (in radians) between `self` and `rhs` in the range `[-π, +π]`.
+    #[inline]
+    #[must_use]
+    #[deprecated(
+        since = "0.27.0",
+        note = "Use angle_to() instead, the semantics of angle_between will change in the future."
+    )]
+    pub fn angle_between(self, rhs: Self) -> f64 {
+        self.angle_to(rhs)
+    }
+
+    /// Returns the angle of rotation (in radians) from `self` to `rhs` in the range `[-π, +π]`.
     ///
     /// The inputs do not need to be unit vectors however they must be non-zero.
     #[inline]
     #[must_use]
-    pub fn angle_between(self, rhs: Self) -> f64 {
+    pub fn angle_to(self, rhs: Self) -> f64 {
         let angle = math::acos_approx(
             self.dot(rhs) / math::sqrt(self.length_squared() * rhs.length_squared()),
         );
@@ -796,11 +918,43 @@ impl DVec2 {
         }
     }
 
+    /// Rotates towards `rhs` up to `max_angle` (in radians).
+    ///
+    /// When `max_angle` is `0.0`, the result will be equal to `self`. When `max_angle` is equal to
+    /// `self.angle_between(rhs)`, the result will be parallel to `rhs`. If `max_angle` is negative,
+    /// rotates towards the exact opposite of `rhs`. Will not go past the target.
+    #[inline]
+    #[must_use]
+    pub fn rotate_towards(&self, rhs: Self, max_angle: f64) -> Self {
+        let a = self.angle_to(rhs);
+        let abs_a = math::abs(a);
+        if abs_a <= 1e-4 {
+            return rhs;
+        }
+        // When `max_angle < 0`, rotate no further than `PI` radians away
+        let angle = max_angle.clamp(abs_a - core::f64::consts::PI, abs_a) * math::signum(a);
+        Self::from_angle(angle).rotate(*self)
+    }
+
     /// Casts all elements of `self` to `f32`.
     #[inline]
     #[must_use]
     pub fn as_vec2(&self) -> crate::Vec2 {
         crate::Vec2::new(self.x as f32, self.y as f32)
+    }
+
+    /// Casts all elements of `self` to `i8`.
+    #[inline]
+    #[must_use]
+    pub fn as_i8vec2(&self) -> crate::I8Vec2 {
+        crate::I8Vec2::new(self.x as i8, self.y as i8)
+    }
+
+    /// Casts all elements of `self` to `u8`.
+    #[inline]
+    #[must_use]
+    pub fn as_u8vec2(&self) -> crate::U8Vec2 {
+        crate::U8Vec2::new(self.x as u8, self.y as u8)
     }
 
     /// Casts all elements of `self` to `i16`.
@@ -864,11 +1018,42 @@ impl Div<DVec2> for DVec2 {
     }
 }
 
+impl Div<&DVec2> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: &DVec2) -> DVec2 {
+        self.div(*rhs)
+    }
+}
+
+impl Div<&DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: &DVec2) -> DVec2 {
+        (*self).div(*rhs)
+    }
+}
+
+impl Div<DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: DVec2) -> DVec2 {
+        (*self).div(rhs)
+    }
+}
+
 impl DivAssign<DVec2> for DVec2 {
     #[inline]
     fn div_assign(&mut self, rhs: Self) {
         self.x.div_assign(rhs.x);
         self.y.div_assign(rhs.y);
+    }
+}
+
+impl DivAssign<&DVec2> for DVec2 {
+    #[inline]
+    fn div_assign(&mut self, rhs: &DVec2) {
+        self.div_assign(*rhs)
     }
 }
 
@@ -883,11 +1068,42 @@ impl Div<f64> for DVec2 {
     }
 }
 
+impl Div<&f64> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: &f64) -> DVec2 {
+        self.div(*rhs)
+    }
+}
+
+impl Div<&f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: &f64) -> DVec2 {
+        (*self).div(*rhs)
+    }
+}
+
+impl Div<f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: f64) -> DVec2 {
+        (*self).div(rhs)
+    }
+}
+
 impl DivAssign<f64> for DVec2 {
     #[inline]
     fn div_assign(&mut self, rhs: f64) {
         self.x.div_assign(rhs);
         self.y.div_assign(rhs);
+    }
+}
+
+impl DivAssign<&f64> for DVec2 {
+    #[inline]
+    fn div_assign(&mut self, rhs: &f64) {
+        self.div_assign(*rhs)
     }
 }
 
@@ -902,6 +1118,30 @@ impl Div<DVec2> for f64 {
     }
 }
 
+impl Div<&DVec2> for f64 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: &DVec2) -> DVec2 {
+        self.div(*rhs)
+    }
+}
+
+impl Div<&DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: &DVec2) -> DVec2 {
+        (*self).div(*rhs)
+    }
+}
+
+impl Div<DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn div(self, rhs: DVec2) -> DVec2 {
+        (*self).div(rhs)
+    }
+}
+
 impl Mul<DVec2> for DVec2 {
     type Output = Self;
     #[inline]
@@ -913,11 +1153,42 @@ impl Mul<DVec2> for DVec2 {
     }
 }
 
+impl Mul<&DVec2> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: &DVec2) -> DVec2 {
+        self.mul(*rhs)
+    }
+}
+
+impl Mul<&DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: &DVec2) -> DVec2 {
+        (*self).mul(*rhs)
+    }
+}
+
+impl Mul<DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: DVec2) -> DVec2 {
+        (*self).mul(rhs)
+    }
+}
+
 impl MulAssign<DVec2> for DVec2 {
     #[inline]
     fn mul_assign(&mut self, rhs: Self) {
         self.x.mul_assign(rhs.x);
         self.y.mul_assign(rhs.y);
+    }
+}
+
+impl MulAssign<&DVec2> for DVec2 {
+    #[inline]
+    fn mul_assign(&mut self, rhs: &DVec2) {
+        self.mul_assign(*rhs)
     }
 }
 
@@ -932,11 +1203,42 @@ impl Mul<f64> for DVec2 {
     }
 }
 
+impl Mul<&f64> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: &f64) -> DVec2 {
+        self.mul(*rhs)
+    }
+}
+
+impl Mul<&f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: &f64) -> DVec2 {
+        (*self).mul(*rhs)
+    }
+}
+
+impl Mul<f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: f64) -> DVec2 {
+        (*self).mul(rhs)
+    }
+}
+
 impl MulAssign<f64> for DVec2 {
     #[inline]
     fn mul_assign(&mut self, rhs: f64) {
         self.x.mul_assign(rhs);
         self.y.mul_assign(rhs);
+    }
+}
+
+impl MulAssign<&f64> for DVec2 {
+    #[inline]
+    fn mul_assign(&mut self, rhs: &f64) {
+        self.mul_assign(*rhs)
     }
 }
 
@@ -951,6 +1253,30 @@ impl Mul<DVec2> for f64 {
     }
 }
 
+impl Mul<&DVec2> for f64 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: &DVec2) -> DVec2 {
+        self.mul(*rhs)
+    }
+}
+
+impl Mul<&DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: &DVec2) -> DVec2 {
+        (*self).mul(*rhs)
+    }
+}
+
+impl Mul<DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn mul(self, rhs: DVec2) -> DVec2 {
+        (*self).mul(rhs)
+    }
+}
+
 impl Add<DVec2> for DVec2 {
     type Output = Self;
     #[inline]
@@ -962,11 +1288,42 @@ impl Add<DVec2> for DVec2 {
     }
 }
 
+impl Add<&DVec2> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: &DVec2) -> DVec2 {
+        self.add(*rhs)
+    }
+}
+
+impl Add<&DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: &DVec2) -> DVec2 {
+        (*self).add(*rhs)
+    }
+}
+
+impl Add<DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: DVec2) -> DVec2 {
+        (*self).add(rhs)
+    }
+}
+
 impl AddAssign<DVec2> for DVec2 {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
         self.x.add_assign(rhs.x);
         self.y.add_assign(rhs.y);
+    }
+}
+
+impl AddAssign<&DVec2> for DVec2 {
+    #[inline]
+    fn add_assign(&mut self, rhs: &DVec2) {
+        self.add_assign(*rhs)
     }
 }
 
@@ -981,11 +1338,42 @@ impl Add<f64> for DVec2 {
     }
 }
 
+impl Add<&f64> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: &f64) -> DVec2 {
+        self.add(*rhs)
+    }
+}
+
+impl Add<&f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: &f64) -> DVec2 {
+        (*self).add(*rhs)
+    }
+}
+
+impl Add<f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: f64) -> DVec2 {
+        (*self).add(rhs)
+    }
+}
+
 impl AddAssign<f64> for DVec2 {
     #[inline]
     fn add_assign(&mut self, rhs: f64) {
         self.x.add_assign(rhs);
         self.y.add_assign(rhs);
+    }
+}
+
+impl AddAssign<&f64> for DVec2 {
+    #[inline]
+    fn add_assign(&mut self, rhs: &f64) {
+        self.add_assign(*rhs)
     }
 }
 
@@ -1000,6 +1388,30 @@ impl Add<DVec2> for f64 {
     }
 }
 
+impl Add<&DVec2> for f64 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: &DVec2) -> DVec2 {
+        self.add(*rhs)
+    }
+}
+
+impl Add<&DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: &DVec2) -> DVec2 {
+        (*self).add(*rhs)
+    }
+}
+
+impl Add<DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn add(self, rhs: DVec2) -> DVec2 {
+        (*self).add(rhs)
+    }
+}
+
 impl Sub<DVec2> for DVec2 {
     type Output = Self;
     #[inline]
@@ -1011,11 +1423,42 @@ impl Sub<DVec2> for DVec2 {
     }
 }
 
+impl Sub<&DVec2> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: &DVec2) -> DVec2 {
+        self.sub(*rhs)
+    }
+}
+
+impl Sub<&DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: &DVec2) -> DVec2 {
+        (*self).sub(*rhs)
+    }
+}
+
+impl Sub<DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: DVec2) -> DVec2 {
+        (*self).sub(rhs)
+    }
+}
+
 impl SubAssign<DVec2> for DVec2 {
     #[inline]
     fn sub_assign(&mut self, rhs: DVec2) {
         self.x.sub_assign(rhs.x);
         self.y.sub_assign(rhs.y);
+    }
+}
+
+impl SubAssign<&DVec2> for DVec2 {
+    #[inline]
+    fn sub_assign(&mut self, rhs: &DVec2) {
+        self.sub_assign(*rhs)
     }
 }
 
@@ -1030,11 +1473,42 @@ impl Sub<f64> for DVec2 {
     }
 }
 
+impl Sub<&f64> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: &f64) -> DVec2 {
+        self.sub(*rhs)
+    }
+}
+
+impl Sub<&f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: &f64) -> DVec2 {
+        (*self).sub(*rhs)
+    }
+}
+
+impl Sub<f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: f64) -> DVec2 {
+        (*self).sub(rhs)
+    }
+}
+
 impl SubAssign<f64> for DVec2 {
     #[inline]
     fn sub_assign(&mut self, rhs: f64) {
         self.x.sub_assign(rhs);
         self.y.sub_assign(rhs);
+    }
+}
+
+impl SubAssign<&f64> for DVec2 {
+    #[inline]
+    fn sub_assign(&mut self, rhs: &f64) {
+        self.sub_assign(*rhs)
     }
 }
 
@@ -1049,6 +1523,30 @@ impl Sub<DVec2> for f64 {
     }
 }
 
+impl Sub<&DVec2> for f64 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: &DVec2) -> DVec2 {
+        self.sub(*rhs)
+    }
+}
+
+impl Sub<&DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: &DVec2) -> DVec2 {
+        (*self).sub(*rhs)
+    }
+}
+
+impl Sub<DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn sub(self, rhs: DVec2) -> DVec2 {
+        (*self).sub(rhs)
+    }
+}
+
 impl Rem<DVec2> for DVec2 {
     type Output = Self;
     #[inline]
@@ -1060,11 +1558,42 @@ impl Rem<DVec2> for DVec2 {
     }
 }
 
+impl Rem<&DVec2> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: &DVec2) -> DVec2 {
+        self.rem(*rhs)
+    }
+}
+
+impl Rem<&DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: &DVec2) -> DVec2 {
+        (*self).rem(*rhs)
+    }
+}
+
+impl Rem<DVec2> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: DVec2) -> DVec2 {
+        (*self).rem(rhs)
+    }
+}
+
 impl RemAssign<DVec2> for DVec2 {
     #[inline]
     fn rem_assign(&mut self, rhs: Self) {
         self.x.rem_assign(rhs.x);
         self.y.rem_assign(rhs.y);
+    }
+}
+
+impl RemAssign<&DVec2> for DVec2 {
+    #[inline]
+    fn rem_assign(&mut self, rhs: &DVec2) {
+        self.rem_assign(*rhs)
     }
 }
 
@@ -1079,11 +1608,42 @@ impl Rem<f64> for DVec2 {
     }
 }
 
+impl Rem<&f64> for DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: &f64) -> DVec2 {
+        self.rem(*rhs)
+    }
+}
+
+impl Rem<&f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: &f64) -> DVec2 {
+        (*self).rem(*rhs)
+    }
+}
+
+impl Rem<f64> for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: f64) -> DVec2 {
+        (*self).rem(rhs)
+    }
+}
+
 impl RemAssign<f64> for DVec2 {
     #[inline]
     fn rem_assign(&mut self, rhs: f64) {
         self.x.rem_assign(rhs);
         self.y.rem_assign(rhs);
+    }
+}
+
+impl RemAssign<&f64> for DVec2 {
+    #[inline]
+    fn rem_assign(&mut self, rhs: &f64) {
+        self.rem_assign(*rhs)
     }
 }
 
@@ -1095,6 +1655,30 @@ impl Rem<DVec2> for f64 {
             x: self.rem(rhs.x),
             y: self.rem(rhs.y),
         }
+    }
+}
+
+impl Rem<&DVec2> for f64 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: &DVec2) -> DVec2 {
+        self.rem(*rhs)
+    }
+}
+
+impl Rem<&DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: &DVec2) -> DVec2 {
+        (*self).rem(*rhs)
+    }
+}
+
+impl Rem<DVec2> for &f64 {
+    type Output = DVec2;
+    #[inline]
+    fn rem(self, rhs: DVec2) -> DVec2 {
+        (*self).rem(rhs)
     }
 }
 
@@ -1165,6 +1749,14 @@ impl Neg for DVec2 {
     }
 }
 
+impl Neg for &DVec2 {
+    type Output = DVec2;
+    #[inline]
+    fn neg(self) -> DVec2 {
+        (*self).neg()
+    }
+}
+
 impl Index<usize> for DVec2 {
     type Output = f64;
     #[inline]
@@ -1188,14 +1780,16 @@ impl IndexMut<usize> for DVec2 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for DVec2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}, {}]", self.x, self.y)
+        if let Some(p) = f.precision() {
+            write!(f, "[{:.*}, {:.*}]", p, self.x, p, self.y)
+        } else {
+            write!(f, "[{}, {}]", self.x, self.y)
+        }
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for DVec2 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple(stringify!(DVec2))
@@ -1250,6 +1844,13 @@ impl From<IVec2> for DVec2 {
 impl From<UVec2> for DVec2 {
     #[inline]
     fn from(v: UVec2) -> Self {
+        Self::new(f64::from(v.x), f64::from(v.y))
+    }
+}
+
+impl From<BVec2> for DVec2 {
+    #[inline]
+    fn from(v: BVec2) -> Self {
         Self::new(f64::from(v.x), f64::from(v.y))
     }
 }

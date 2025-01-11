@@ -1,8 +1,14 @@
 // Generated from vec_mask.rs.tera template. Edit the template, not the generated file.
 
-#[cfg(not(target_arch = "spirv"))]
 use core::fmt;
 use core::ops::*;
+
+/// Creates a 2-dimensional `bool` vector mask.
+#[inline(always)]
+#[must_use]
+pub const fn bvec2(x: bool, y: bool) -> BVec2 {
+    BVec2::new(x, y)
+}
 
 /// A 2-dimensional `bool` vector mask.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -176,7 +182,6 @@ impl Not for BVec2 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Debug for BVec2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_u32_array();
@@ -184,7 +189,6 @@ impl fmt::Debug for BVec2 {
     }
 }
 
-#[cfg(not(target_arch = "spirv"))]
 impl fmt::Display for BVec2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arr = self.into_bool_array();
